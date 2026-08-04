@@ -1,0 +1,17 @@
+server:
+  port: 8080
+  http_timeout: 30s
+  download_timeout: 2m
+
+download:
+  dir: ./downloads
+  max_bytes: 104857600
+
+providers:
+  kuwo:
+    search_url: https://search.kuwo.cn/r.s
+    resolve_url: https://mobi.kuwo.cn/mobi.s
+  netease:
+    base_url:
+    cookie:
+    extended_resolve_url: https://music-api.gdstudio.xyz/api.php
