@@ -33,13 +33,6 @@ type SearchResult struct {
 	Tracks   []Track `json:"tracks"`
 }
 
-// ResolveRequest 指定需要解析的音乐源、歌曲和音质。
-type ResolveRequest struct {
-	Provider string `json:"provider"`
-	TrackID  string `json:"trackId"`
-	Quality  string `json:"quality"`
-}
-
 // Resource 是 Provider 解析出的临时下载资源。
 // Headers 保存下载该资源时必须携带的请求头。
 type Resource struct {
@@ -51,11 +44,6 @@ type Resource struct {
 	ExpiresAt string            `json:"expiresAt,omitempty"`
 }
 
-// DownloadRequest 在解析请求基础上增加可选文件名。
-type DownloadRequest struct {
-	ResolveRequest
-	FileName string `json:"fileName,omitempty"`
-}
 
 // DownloadResult 返回最终落盘文件的信息。
 type DownloadResult struct {
