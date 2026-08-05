@@ -1,0 +1,110 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/lemonc7/tune-go/model"
+	"github.com/lemonc7/tune-go/views/components"
+	"github.com/lemonc7/tune-go/views/layout"
+)
+
+templ DownloadsPage(items []model.DownloadHistory) {
+	@layout.Layout("下载历史", DownloadsContent(items))
+}
+
+templ DownloadsContent(items []model.DownloadHistory) {
+	<section>
+		<h1>下载历史</h1>
+		@DownloadList(items, true)
+	</section>
+}
+
+templ DownloadList(items []model.DownloadHistory, polling bool) {
+	<div
+		id="download-list"
+		if polling {
+			hx-get="/web/downloads"
+			hx-trigger="every 2s, downloadsChanged from:body"
+			hx-swap="outerHTML"
+		}
+	>
+		if len(items) == 0 {
+			@components.Empty("暂无下载记录")
+		} else {
+			for _,item := range items {
+				@DownloadItem(item)
+			}
+		}
+	</div>
+}
+
+templ DownloadItem(item model.DownloadHistory) {
+	<article
+		id={ fmt.Sprintf("download-%d", item.ID) }
+	>
+		<header>
+			<strong>{ item.MusicName }</strong>
+			<span>{ item.Provider+ "/" + item.Quality }</span>
+		</header>
+		<progress value={ fmt.Sprintf("%d", item.Progress) } max="100"></progress>
+		<span>{ fmt.Sprintf("%d%%",item.Progress) }</span>
+		<p>状态: { downloadStatusText(item.Status) }</p>
+		if item.ErrorMessage != nil {
+			<p class="error">{ *item.ErrorMessage }</p>
+		}
+		<div>
+			switch item.Status {
+				case "pending","resolving","downloading":
+					<button
+						hx-post={ fmt.Sprintf("/web/downloads/%d/pause", item.ID) }
+						hx-target="#download-list"
+						hx-swap="outerHTML"
+					>
+						暂停
+					</button>
+					<button
+						hx-post={ fmt.Sprintf("/web/downloads/%d/cancel", item.ID) }
+						hx-target="#download-list"
+						hx-swap="outerHTML"
+						hx-confirm="确定取消该任务?"
+					>
+						取消
+					</button>
+				case "paused":
+					<button
+						hx-post={ fmt.Sprintf("/web/downloads/%d/resume", item.ID) }
+						hx-target="#download-list"
+						hx-swap="outerHTML"
+					>继续</button>
+				case "failed","cancelled":
+					<button
+						hx-post={ fmt.Sprintf("/web/downloads/%d/retry", item.ID) }
+						hx-target="#download-list"
+						hx-swap="outerHTML"
+					>重试</button>
+			}
+		</div>
+	</article>
+}
+
+func downloadStatusText(status string) string {
+	switch status {
+	case "pending":
+		return "等待下载"
+	case "resolving":
+		return "正在解析"
+	case "downloading":
+		return "正在下载"
+	case "tagging":
+		return "正在写入标签"
+	case "paused":
+		return "已暂停"
+	case "completed":
+		return "已完成"
+	case "failed":
+		return "失败"
+	case "cancelled":
+		return "已取消"
+	default:
+		return status
+	}
+}

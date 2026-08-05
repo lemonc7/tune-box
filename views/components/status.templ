@@ -1,0 +1,19 @@
+package components
+
+templ Empty(message string) {
+	<div class="empty">
+		<p>{ message }</p>
+	</div>
+}
+
+templ Notice(message string) {
+	<div class="notice">
+		{ message }
+	</div>
+}
+
+templ ErrorNotice(message string) {
+	<div class="notice error">
+		{ message }
+	</div>
+}

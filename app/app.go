@@ -21,6 +21,7 @@ import (
 	"github.com/lemonc7/tune-go/provider/netease"
 	"github.com/lemonc7/tune-go/service"
 	"github.com/lemonc7/tune-go/tag"
+	"github.com/lemonc7/tune-go/web"
 )
 
 // App 保存 HTTP 服务及其需要在退出时释放的资源。
@@ -29,6 +30,7 @@ type App struct {
 	logger          *slog.Logger
 	resourceHandler *api.ResourceHandler
 	music           *service.Music
+	web             *web.Handler
 	store           *database.Store
 }
 
@@ -126,7 +128,10 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		logger:          logger,
 		resourceHandler: &api.ResourceHandler{Music: musicService},
 		music:           musicService,
-		store:           store,
+		web: &web.Handler{
+			Music: musicService,
+		},
+		store: store,
 	}
 	app.initRouter()
 
@@ -168,4 +173,23 @@ func (a *App) initRouter() {
 	group.DELETE("/downloads/:id", a.resourceHandler.DeleteDownload)
 	group.GET("/library", a.resourceHandler.Library)
 	group.POST("/library/scan", a.resourceHandler.ScanLibrary)
+
+	// 完整页面
+	a.echo.GET("/", a.web.Home)
+	a.echo.GET("/downloads", a.web.DownloadsPage)
+	a.echo.GET("/library", a.web.LibraryPage)
+
+	web := a.echo.Group("/web")
+	web.GET("/search", a.web.Search)
+	web.POST("/resolve", a.web.Resolve)
+
+	web.GET("/downloads", a.web.DownloadList)
+	web.POST("/downloads", a.web.CreateDownload)
+	web.POST("/downloads/:id/pause", a.web.PauseDownload)
+	web.POST("/downloads/:id/resume", a.web.ResumeDownload)
+	web.POST("/downloads/:id/cancel", a.web.CancelDownload)
+	web.POST("/downloads/:id/retry", a.web.RetryDownload)
+	web.POST("/library/scan", a.web.ScanLibrary)
+
+	a.echo.Static("/assets", "assets")
 }

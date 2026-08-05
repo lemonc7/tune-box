@@ -1,0 +1,99 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/lemonc7/tune-go/model"
+	"github.com/lemonc7/tune-go/views/components"
+	"github.com/lemonc7/tune-go/views/layout"
+)
+
+templ LibraryPage(items []model.LibraryFile) {
+	@layout.Layout("本地曲库", LibraryContent(items))
+}
+
+templ LibraryContent(items []model.LibraryFile) {
+	<section>
+		<header>
+			<h1>本地曲库</h1>
+			<button
+				hx-post="/web/library/scan"
+				hx-target="#library-list"
+				hx-swap="outerHTML"
+				hx-disabled-elt="this"
+			>
+				扫描下载目录
+			</button>
+		</header>
+		@LibraryList(items)
+	</section>
+}
+
+templ LibraryList(items []model.LibraryFile) {
+	<div id="library-list">
+		if len(items) == 0 {
+			@components.Empty("曲库中没有音乐文件")
+		} else {
+			<table>
+				<thead>
+					<tr>
+						<th>歌曲</th>
+						<th>专辑</th>
+						<th>来源</th>
+						<th>格式</th>
+						<th>大小</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _,item := range items {
+						<tr>
+							<td>
+								if item.MusicName != nil {
+									{ *item.MusicName }
+								} else {
+									{ item.FileName }
+								}
+							</td>
+							<td>
+								if item.Album != nil {
+									{ *item.Album }
+								} else {
+									-
+								}
+							</td>
+							<td>
+								if item.Provider != nil {
+									{ *item.Provider }
+								} else {
+									-
+								}
+							</td>
+							<td>
+								{ item.Extension }
+							</td>
+							<td>{ formatBytes(item.Size) }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+	</div>
+}
+
+func formatBytes(size int64) string {
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+
+	switch {
+	case size >= gb:
+		return fmt.Sprintf("%.2f GB", float64(size)/float64(gb))
+	case size >= mb:
+		return fmt.Sprintf("%.2f MB", float64(size)/float64(mb))
+	case size >= kb:
+		return fmt.Sprintf("%.2f KB", float64(size)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", size)
+	}
+}

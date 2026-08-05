@@ -1,0 +1,118 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/lemonc7/tune-go/model"
+	"github.com/lemonc7/tune-go/provider"
+	"github.com/lemonc7/tune-go/views/components"
+	"github.com/lemonc7/tune-go/views/layout"
+	"strings"
+)
+
+templ SearchPage(
+	providers []provider.Info,
+	downloads []model.DownloadHistory,
+) {
+	@layout.Layout("TuneGo", SearchContent(providers, downloads))
+}
+
+templ SearchContent(
+	providers []provider.Info,
+	downloads []model.DownloadHistory,
+) {
+	<section>
+		<h1>搜索音乐</h1>
+		<form
+			action="/"
+			method="get"
+			hx-get="/web/search"
+			hx-target="#search-results"
+			hx-swap="innerHTML"
+			hx-indicator="#search-loading"
+		>
+			<label>
+				音乐源
+				<select name="provider" required>
+					for _,item := range providers {
+						<option
+							value={ item.Name }
+							disabled?={ !item.Available }
+						>
+							{ item.Name }
+						</option>
+					}
+				</select>
+			</label>
+			<label>
+				关键词
+				<input
+					name="q"
+					type="search"
+					placeholder="歌曲、歌手或专辑"
+					required
+				/>
+			</label>
+			<label>
+				<input name="lossless" type="checkbox" value="true"/>
+				仅显示无损音乐
+			</label>
+			<input name="page" type="hidden" value="1"/>
+			<input name="limit" type="hidden" value="20"/>
+			<button type="submit">搜索</button>
+			<span id="search-loading" class="htmx-indicator">
+				搜索中...
+			</span>
+		</form>
+	</section>
+	<section id="search-results" aria-live="polite">
+		@components.Empty("请输入关键词开始搜索")
+	</section>
+	<section>
+		<h2>最近下载</h2>
+		@DownloadList(downloads, true)
+	</section>
+}
+
+templ SearchResults(result model.SearchResult) {
+	if len(result.Tracks) == 0 {
+		@components.Empty("没有找到歌曲")
+	} else {
+		<div>
+			<p>
+				{ fmt.Sprintf("找到 %d 条结果",result.Total) }
+			</p>
+			for _,track := range result.Tracks {
+				@TrackCard(track)
+			}
+		</div>
+	}
+}
+
+templ TrackCard(track model.Track) {
+	<article
+		class="track"
+	>
+		if track.CoverURL != "" {
+			<img
+				src={ track.CoverURL }
+				alt={ track.Name }
+				width="80"
+				height="80"
+				loading="lazy"
+			/>
+		}
+		<div>
+			<h3>{ track.Name }</h3>
+			<p>{ strings.Join(track.Artists,"/") }</p>
+			if track.Album != "" {
+				<p>专辑: { track.Album }</p>
+			}
+			<div>
+				for _,quality := range track.Qualities {
+					@components.ResolveButton(track, quality)
+				}
+			</div>
+			<div id={ "resolve-" + track.Provider + "-" + track.ID }></div>
+		</div>
+	</article>
+}

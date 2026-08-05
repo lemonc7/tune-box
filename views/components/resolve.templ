@@ -1,0 +1,94 @@
+package components
+
+import (
+	"fmt"
+
+	"github.com/lemonc7/tune-go/model"
+)
+
+templ ResolveButton(track model.Track, quality model.Quality) {
+	<form
+		hx-post="/web/resolve"
+		hx-target={ "#resolve-" + track.Provider + "-" + track.ID }
+		hx-swap="innerHTML"
+		hx-indicator="find .htmx-indicator"
+	>
+		<input type="hidden" name="provider" value={ track.Provider }/>
+		<input type="hidden" name="trackId" value={ track.ID }/>
+		<input type="hidden" name="quality" value={ quality.ID }/>
+		<input type="hidden" name="name" value={ track.Name }/>
+		<input type="hidden" name="album" value={ track.Album }/>
+		<input
+			type="hidden"
+			name="durationMs"
+			value={ fmt.Sprintf("%d", track.DurationMS) }
+		/>
+		<input type="hidden" name="coverUrl" value={ track.CoverURL }/>
+		for _,artist := range track.Artists {
+			<input type="hidden" name="artists" value={ artist }/>
+		}
+		<button type="submit">
+			{ quality.Label }
+			if quality.Format !=  "" {
+				<span>{ " · " + quality.Format }</span>
+			}
+		</button>
+		<span class="htmx-indicator">解析中...</span>
+	</form>
+}
+
+templ ResolveResource(
+	request model.DownloadRequest,
+	resource model.Resource,
+) {
+	<div class="resolved-resource">
+		<p>
+			已解析:
+			<strong>{ resource.Quality.Label }</strong>
+			if resource.Quality.Format != "" {
+				<span>{ " / " + resource.Quality.Format }</span>
+			}
+		</p>
+		if resource.ExpiresAt != "" {
+			<p>资源有效期: { resource.ExpiresAt }</p>
+		}
+		<form
+			hx-post="/web/downloads"
+			hx-target="closest .resolved-resource"
+			hx-swap="outerHTML"
+			hx-disabled-elt="find button"
+		>
+			<input
+				type="hidden"
+				name="provider"
+				value={ request.Provider }
+			/>
+			<input
+				type="hidden"
+				name="trackId"
+				value={ request.TrackID }
+			/>
+			<input
+				type="hidden"
+				name="quality"
+				value={ request.Quality }
+			/>
+			<input type="hidden" name="name" value={ request.Name }/>
+			<input type="hidden" name="album" value={ request.Album }/>
+			<input
+				type="hidden"
+				name="coverUrl"
+				value={ request.CoverURL }
+			/>
+			<input
+				type="hidden"
+				name="durationMs"
+				value={ fmt.Sprintf("%d", request.DurationMS) }
+			/>
+			for _,artist := range request.Artists {
+				<input type="hidden" name="artists" value={ artist }/>
+			}
+			<button type="submit">加入下载</button>
+		</form>
+	</div>
+}
