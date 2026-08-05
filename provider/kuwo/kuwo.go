@@ -3,7 +3,10 @@ package kuwo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -13,6 +16,11 @@ import (
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
+
+const (
+	lyricURL = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"
+	coverAPI = "https://artistpicserver.kuwo.cn/pic.web"
+)
 
 // qualities 将对外使用的音质 ID 映射成统一音质模型。
 var qualities = map[string]model.Quality{
@@ -137,6 +145,76 @@ func (p *Provider) Resolve(ctx context.Context, trackID, qualityID string) (mode
 	}
 
 	return model.Resource{Provider: p.Name(), TrackID: trackID, Quality: quality, URL: payload.Data.URL, Headers: map[string]string{"User-Agent": userAgent}}, nil
+}
+
+// Metadata 获取酷我的时间轴歌词和 500px 专辑封面。
+func (p *Provider) Metadata(ctx context.Context, trackID string) (model.MusicMetadata, error) {
+	metadata := model.MusicMetadata{}
+	lyricEndpoint, _ := url.Parse(lyricURL)
+	values := lyricEndpoint.Query()
+	values.Set("musicId", trackID)
+	lyricEndpoint.RawQuery = values.Encode()
+	var lyricPayload struct {
+		Code int `json:"code"`
+		Data struct {
+			Lines []struct {
+				Text string `json:"lineLyric"`
+				Time string `json:"time"`
+			} `json:"lrclist"`
+		} `json:"data"`
+	}
+	var lyricErr error
+	if err := p.getJSON(ctx, lyricEndpoint.String(), &lyricPayload); err != nil {
+		lyricErr = err
+	} else if lyricPayload.Code != http.StatusOK {
+		lyricErr = fmt.Errorf("Kuwo lyric API returned code %d", lyricPayload.Code)
+	} else {
+		var lyrics strings.Builder
+		for _, line := range lyricPayload.Data.Lines {
+			seconds, err := strconv.ParseFloat(line.Time, 64)
+			if err != nil || seconds < 0 {
+				continue
+			}
+			hundredths := int64(math.Round(seconds * 100))
+			fmt.Fprintf(&lyrics, "[%02d:%02d.%02d]%s\n", hundredths/6000, hundredths/100%60, hundredths%100, line.Text)
+		}
+		metadata.Lyrics = strings.TrimSpace(lyrics.String())
+	}
+
+	coverEndpoint, _ := url.Parse(coverAPI)
+	values = coverEndpoint.Query()
+	values.Set("prod", "kwplayer_ar_11.3.4.1")
+	values.Set("corp", "kuwo")
+	values.Set("source", "kwplayer_ar_11.3.4.1_hw.apk")
+	values.Set("type", "rid_pic")
+	values.Set("pictype", "url")
+	values.Set("content", "list")
+	values.Set("size", "500")
+	values.Set("rid", trackID)
+	values.Set("jfencv", "user,android_id")
+	coverEndpoint.RawQuery = values.Encode()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, coverEndpoint.String(), nil)
+	req.Header.Set("User-Agent", userAgent)
+	resp, coverErr := p.client.Do(req)
+	if coverErr == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			coverErr = fmt.Errorf("Kuwo cover API returned HTTP %d", resp.StatusCode)
+		} else {
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 2049))
+			if err != nil {
+				coverErr = err
+			} else if len(body) > 2048 {
+				coverErr = errors.New("Kuwo cover URL is too long")
+			} else {
+				metadata.CoverURL = strings.TrimSpace(string(body))
+				if strings.HasPrefix(metadata.CoverURL, "http://") {
+					metadata.CoverURL = "https://" + strings.TrimPrefix(metadata.CoverURL, "http://")
+				}
+			}
+		}
+	}
+	return metadata, errors.Join(lyricErr, coverErr)
 }
 
 func (p *Provider) getJSON(ctx context.Context, endpoint string, target any) error {

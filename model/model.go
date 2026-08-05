@@ -44,6 +44,14 @@ type Resource struct {
 	ExpiresAt string            `json:"expiresAt,omitempty"`
 }
 
+// MusicMetadata 是写入音频文件的统一歌曲信息，歌词保留 LRC 时间轴。
+type MusicMetadata struct {
+	Name     string
+	Artists  []string
+	Album    string
+	CoverURL string
+	Lyrics   string
+}
 
 // DownloadResult 返回最终落盘文件的信息。
 type DownloadResult struct {
@@ -51,4 +59,55 @@ type DownloadResult struct {
 	FileName    string `json:"fileName"`
 	Size        int64  `json:"size"`
 	ContentType string `json:"contentType,omitempty"`
+}
+
+// DownloadTaskResult 是创建或操作异步下载任务的结果。
+type DownloadTaskResult struct {
+	DownloadID int64  `json:"downloadId"`
+	Status     string `json:"status"`
+	Duplicate  bool   `json:"duplicate,omitempty"`
+}
+
+// DownloadHistory 描述一次下载从创建到结束的状态和结果。
+type DownloadHistory struct {
+	ID              int64   `json:"id"`
+	MusicID         int64   `json:"musicId"`
+	MusicName       string  `json:"musicName"`
+	Album           *string `json:"album,omitempty"`
+	Provider        string  `json:"provider"`
+	TrackID         string  `json:"trackId"`
+	Quality         string  `json:"quality"`
+	Status          string  `json:"status"`
+	Progress        int64   `json:"progress"`
+	DownloadedBytes int64   `json:"downloadedBytes"`
+	TotalBytes      int64   `json:"totalBytes"`
+	Attempt         int64   `json:"attempt"`
+	FileName        *string `json:"fileName,omitempty"`
+	Path            *string `json:"path,omitempty"`
+	Size            *int64  `json:"size,omitempty"`
+	ContentType     *string `json:"contentType,omitempty"`
+	ErrorMessage    *string `json:"errorMessage,omitempty"`
+	CreatedAt       string  `json:"createdAt"`
+	StartedAt       *string `json:"startedAt,omitempty"`
+	FinishedAt      *string `json:"finishedAt,omitempty"`
+}
+
+// LibraryFile 是下载目录中实际存在的一份音频文件。
+type LibraryFile struct {
+	ID         int64   `json:"id"`
+	MusicID    *int64  `json:"musicId,omitempty"`
+	Path       string  `json:"path"`
+	FileName   string  `json:"fileName"`
+	Extension  string  `json:"extension"`
+	Size       int64   `json:"size"`
+	ModifiedAt string  `json:"modifiedAt"`
+	Provider   *string `json:"provider,omitempty"`
+	TrackID    *string `json:"trackId,omitempty"`
+	MusicName  *string `json:"musicName,omitempty"`
+	Album      *string `json:"album,omitempty"`
+}
+
+// LibraryScanResult 返回本次目录扫描发现的音频文件数量。
+type LibraryScanResult struct {
+	Files int `json:"files"`
 }

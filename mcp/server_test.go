@@ -10,6 +10,7 @@ import (
 
 	"github.com/lemonc7/tune-go/model"
 	"github.com/lemonc7/tune-go/provider"
+	"github.com/lemonc7/tune-go/service"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -44,9 +45,14 @@ func (fakeProvider) Resolve(_ context.Context, trackID, qualityID string) (model
 	return model.Resource{Provider: "kuwo", TrackID: trackID, Quality: model.Quality{ID: qualityID}}, nil
 }
 
+func (fakeProvider) Metadata(context.Context, string) (model.MusicMetadata, error) {
+	return model.MusicMetadata{}, nil
+}
+
 func TestStreamableHTTPTools(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	httpServer := httptest.NewServer(New(provider.NewRegistry(fakeProvider{}), nil, logger))
+	music := service.NewMusic(provider.NewRegistry(fakeProvider{}), nil, nil, nil, t.TempDir(), 1, logger)
+	httpServer := httptest.NewServer(New(music, logger))
 	defer httpServer.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -62,8 +68,8 @@ func TestStreamableHTTPTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list tools: %v", err)
 	}
-	if len(tools.Tools) != 4 {
-		t.Fatalf("tool count = %d, want 4", len(tools.Tools))
+	if len(tools.Tools) != 11 {
+		t.Fatalf("tool count = %d, want 11", len(tools.Tools))
 	}
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{

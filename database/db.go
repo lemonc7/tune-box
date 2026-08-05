@@ -12,21 +12,21 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/sqlite"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/lemonc7/tune-go/config"
+	"github.com/lemonc7/tune-go/repo"
 	_ "modernc.org/sqlite"
 )
 
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-const dbPath = "data/data.db"
-
-func New(cfg config.DatabaseConfig) (*sql.DB, error) {
-	dbName, err := filepath.Abs(dbPath)
+// New 打开 SQLite、配置连接池、执行迁移并返回数据仓库。
+func New(cfg config.DatabaseConfig) (*Store, error) {
+	dbName, err := filepath.Abs(cfg.Path)
 	if err != nil {
 		return nil, fmt.Errorf("invalid db path: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbName), 0o755); err != nil {
 		return nil, fmt.Errorf("create db dir: %w", err)
 	}
 	dsn, err := cfg.DSN(dbName)
@@ -38,6 +38,8 @@ func New(cfg config.DatabaseConfig) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open SQLite: %w", err)
 	}
+	// SQLite 使用 WAL 和 busy_timeout 后可以支持少量并发读写，
+	// 连接数仍由配置限制，避免产生过多写锁竞争。
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.MaxIdleConns)
 	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
@@ -48,9 +50,15 @@ func New(cfg config.DatabaseConfig) (*sql.DB, error) {
 		return nil, err
 	}
 
-	return db, nil
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("ping SQLite: %w", err)
+	}
+
+	return &Store{db: db, queries: repo.New(db)}, nil
 }
 
+// migrateUp 执行嵌入二进制中的全部数据库迁移。
 func migrateUp(db *sql.DB, dbName string) error {
 	source, err := iofs.New(migrations, "migrations")
 	if err != nil {

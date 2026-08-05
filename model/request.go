@@ -1,11 +1,17 @@
 package model
 
+// SearchRequest 是 REST 搜索接口的查询参数。
 type SearchRequest struct {
 	Provider string `query:"provider" validate:"required"`
 	Query    string `query:"q" validate:"required"`
 	Page     int    `query:"page" validate:"required,gte=1"`
-	Limit    int    `query:"limit" validate:"required,gte=10,lte=100"`
+	Limit    int    `query:"limit" validate:"required,gte=1,lte=100"`
 	Lossless bool   `query:"lossless"`
+}
+
+// ListRequest 是下载历史和本地曲库的分页数量参数。
+type ListRequest struct {
+	Limit int `query:"limit" validate:"required,gte=1,lte=500"`
 }
 
 // ResolveRequest 指定需要解析的音乐源、歌曲和音质。
@@ -18,5 +24,10 @@ type ResolveRequest struct {
 // DownloadRequest 在解析请求基础上增加可选文件名。
 type DownloadRequest struct {
 	ResolveRequest
-	FileName string `json:"fileName,omitempty"`
+	FileName   string   `json:"fileName,omitempty"`
+	Name       string   `json:"name,omitempty"`
+	Artists    []string `json:"artists,omitempty"`
+	Album      string   `json:"album,omitempty"`
+	CoverURL   string   `json:"coverUrl,omitempty"`
+	DurationMS int64    `json:"durationMs,omitempty"`
 }

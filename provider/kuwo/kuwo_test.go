@@ -43,6 +43,26 @@ func TestSearchDecodesCurrentKuwoShape(t *testing.T) {
 	}
 }
 
+func TestMetadataBuildsLRCAndCoverURL(t *testing.T) {
+	client := &http.Client{Transport: roundTripper(func(request *http.Request) (*http.Response, error) {
+		body := `{"code":200,"data":{"lrclist":[{"lineLyric":"故事的小黄花","time":"29.26"},{"lineLyric":"从出生那年就飘着","time":"32.71"}]}}`
+		if request.URL.Host == "artistpicserver.kuwo.cn" {
+			body = "http://img1.kwcdn.kuwo.cn/star/albumcover/500/cover.jpg"
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	metadata, err := New(client, "search", "resolve").Metadata(context.Background(), "228908")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Lyrics != "[00:29.26]故事的小黄花\n[00:32.71]从出生那年就飘着" {
+		t.Fatalf("unexpected lyrics: %q", metadata.Lyrics)
+	}
+	if metadata.CoverURL != "https://img1.kwcdn.kuwo.cn/star/albumcover/500/cover.jpg" {
+		t.Fatalf("unexpected cover URL: %q", metadata.CoverURL)
+	}
+}
+
 type roundTripper func(*http.Request) (*http.Response, error)
 
 func (fn roundTripper) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }

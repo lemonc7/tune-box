@@ -4,6 +4,7 @@ server:
   download_timeout: 2m
 
 database:
+  path: ./data/tune-go.db
   max_open_conns: 4
   max_idle_conns: 4
   conn_max_lifetime: 0s
@@ -13,6 +14,7 @@ database:
 download:
   dir: ./downloads
   max_bytes: 104857600
+  max_concurrent: 2
 
 providers:
   kuwo:

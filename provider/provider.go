@@ -12,12 +12,13 @@ import (
 
 var ErrUnavailable = errors.New("provider is not configured")
 
-// Provider 统一不同音乐平台的搜索和资源地址解析能力。
+// Provider 统一不同音乐平台的搜索、资源解析和标签元数据能力。
 type Provider interface {
 	Name() string
 	Available() bool
 	Search(ctx context.Context, query string, page, limit int) (model.SearchResult, error)
 	Resolve(ctx context.Context, trackID, qualityID string) (model.Resource, error)
+	Metadata(ctx context.Context, trackID string) (model.MusicMetadata, error)
 }
 
 // Registry 根据请求中的名称查找对应音乐源。

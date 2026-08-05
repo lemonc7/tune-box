@@ -28,6 +28,7 @@ func main() {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
+	defer server.Close()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

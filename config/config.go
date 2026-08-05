@@ -27,8 +27,9 @@ type ServerConfig struct {
 
 // DownloadConfig 控制文件保存位置和允许下载的单文件上限。
 type DownloadConfig struct {
-	Dir      string `yaml:"dir" env:"DOWNLOAD_DIR" env-default:"./downloads"`
-	MaxBytes int64  `yaml:"max_bytes" env:"MAX_DOWNLOAD_BYTES" env-default:"104857600"`
+	Dir           string `yaml:"dir" env:"DOWNLOAD_DIR" env-default:"./downloads"`
+	MaxBytes      int64  `yaml:"max_bytes" env:"MAX_DOWNLOAD_BYTES" env-default:"104857600"`
+	MaxConcurrent int    `yaml:"max_concurrent" env:"MAX_CONCURRENT_DOWNLOADS" env-default:"2"`
 }
 
 // ProvidersConfig 保存各音乐平台的接口配置。
@@ -53,11 +54,12 @@ type NeteaseConfig struct {
 // DatabaseConfig 定义 SQLite 连接池和锁等待配置。
 // 外键、WAL 等数据库约束固定写入 DSN，不允许通过配置关闭。
 type DatabaseConfig struct {
-	MaxOpenConns    int           `yaml:"max_open_conns" env:"LENSY_DB_MAX_OPEN_CONNS" env-default:"4"`
-	MaxIdleConns    int           `yaml:"max_idle_conns" env:"LENSY_DB_MAX_IDLE_CONNS" env-default:"4"`
-	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"LENSY_DB_CONN_MAX_LIFETIME" env-default:"0s"`
-	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time" env:"LENSY_DB_CONN_MAX_IDLE_TIME" env-default:"0s"`
-	BusyTimeout     time.Duration `yaml:"busy_timeout" env:"LENSY_DB_BUSY_TIMEOUT" env-default:"5s"`
+	Path            string        `yaml:"path" env:"TUNE_GO_DB_PATH" env-default:"./data/tune-go.db"`
+	MaxOpenConns    int           `yaml:"max_open_conns" env:"TUNE_GO_DB_MAX_OPEN_CONNS" env-default:"4"`
+	MaxIdleConns    int           `yaml:"max_idle_conns" env:"TUNE_GO_DB_MAX_IDLE_CONNS" env-default:"4"`
+	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"TUNE_GO_DB_CONN_MAX_LIFETIME" env-default:"0s"`
+	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time" env:"TUNE_GO_DB_CONN_MAX_IDLE_TIME" env-default:"0s"`
+	BusyTimeout     time.Duration `yaml:"busy_timeout" env:"TUNE_GO_DB_BUSY_TIMEOUT" env-default:"5s"`
 }
 
 // DSN 返回 modernc.org/sqlite 使用的连接字符串。
@@ -92,6 +94,18 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
+	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
+		return nil, fmt.Errorf("server.port must be between 1 and 65535")
+	}
+	if cfg.Server.HTTPTimeout <= 0 || cfg.Server.DownloadTimeout <= 0 {
+		return nil, fmt.Errorf("server timeouts must be positive")
+	}
+	if cfg.Download.Dir == "" || cfg.Download.MaxBytes <= 0 || cfg.Download.MaxConcurrent <= 0 {
+		return nil, fmt.Errorf("download.dir, download.max_bytes and download.max_concurrent must be positive")
+	}
+	if cfg.Database.Path == "" {
+		return nil, fmt.Errorf("database.path is required")
+	}
 	return &cfg, nil
 }
 

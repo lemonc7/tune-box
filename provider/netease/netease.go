@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -137,6 +138,47 @@ func (p *Provider) Resolve(ctx context.Context, trackID, qualityID string) (mode
 		return model.Resource{}, fmt.Errorf("Netease returned no resource URL; check account permission and API compatibility")
 	}
 	return model.Resource{Provider: p.Name(), TrackID: trackID, Quality: quality, URL: resourceURL, Headers: p.resourceHeaders()}, nil
+}
+
+// Metadata 从自建网易 API 获取歌曲详情和原始 LRC 时间轴歌词。
+func (p *Provider) Metadata(ctx context.Context, trackID string) (model.MusicMetadata, error) {
+	metadata := model.MusicMetadata{}
+	var lyricPayload struct {
+		Code int `json:"code"`
+		LRC  struct {
+			Lyric string `json:"lyric"`
+		} `json:"lrc"`
+	}
+	lyricErr := p.postAPI(ctx, "/lyric", map[string]any{"id": trackID}, &lyricPayload)
+	if lyricErr == nil {
+		if lyricPayload.Code != 0 && lyricPayload.Code != http.StatusOK {
+			lyricErr = fmt.Errorf("Netease lyric API returned code %d", lyricPayload.Code)
+		} else {
+			metadata.Lyrics = strings.TrimSpace(lyricPayload.LRC.Lyric)
+		}
+	}
+
+	var detailPayload struct {
+		Code  int    `json:"code"`
+		Songs []song `json:"songs"`
+	}
+	detailErr := p.postAPI(ctx, "/song/detail", map[string]any{"ids": trackID}, &detailPayload)
+	if detailErr == nil {
+		if detailPayload.Code != 0 && detailPayload.Code != http.StatusOK {
+			detailErr = fmt.Errorf("Netease song detail API returned code %d", detailPayload.Code)
+		} else if len(detailPayload.Songs) == 0 {
+			detailErr = errors.New("Netease song detail API returned no song")
+		} else {
+			item := detailPayload.Songs[0]
+			metadata.Name = item.Name
+			metadata.Album = item.Album.Name
+			metadata.CoverURL = item.Album.PicURL
+			for _, entry := range item.Artists {
+				metadata.Artists = append(metadata.Artists, entry.Name)
+			}
+		}
+	}
+	return metadata, errors.Join(lyricErr, detailErr)
 }
 
 func (p *Provider) resolve(ctx context.Context, trackID string, quality model.Quality) (string, error) {

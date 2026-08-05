@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/lemonc7/tune-go/model"
@@ -26,14 +27,22 @@ type Downloader struct {
 	maxBytes int64
 }
 
+// Options 描述任务断点、进度回调以及最终落盘前的音频处理步骤。
+type Options struct {
+	TaskID         int64
+	FileName       string
+	ExpectedBytes  int64
+	Progress       func(downloaded, total int64)
+	BeforeFinalize func(ctx context.Context, path string) error
+}
+
 // New 创建下载器；maxBytes 是单个文件允许写入的最大字节数。
 func New(client *http.Client, dir string, maxBytes int64) *Downloader {
 	return &Downloader{client: client, dir: dir, maxBytes: maxBytes}
 }
 
-// Download 下载并校验音频。任何步骤失败都会删除临时文件，
-// 只有完整校验通过后才会生成最终文件。
-func (d *Downloader) Download(ctx context.Context, resource model.Resource, requestedName string) (model.DownloadResult, error) {
+// Download 下载并校验音频。临时文件使用任务 ID 命名，中断后可以继续下载。
+func (d *Downloader) Download(ctx context.Context, resource model.Resource, options Options) (model.DownloadResult, error) {
 	// 下载地址只能来自 Provider，并且必须是合法的 HTTP(S) 地址。
 	resourceURL, err := url.Parse(resource.URL)
 	if err != nil || (resourceURL.Scheme != "http" && resourceURL.Scheme != "https") || resourceURL.Hostname() == "" {
@@ -43,7 +52,7 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, requ
 		return model.DownloadResult{}, err
 	}
 
-	name := safeName(requestedName)
+	name := safeName(options.FileName)
 	if name == "" {
 		name = resource.Provider + "-" + resource.TrackID
 	}
@@ -52,20 +61,33 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, requ
 		name += extension
 	}
 	target := filepath.Join(d.dir, name)
-	// 先写入同目录临时文件，避免中断时留下看似完整的音频文件。
-	temp, err := os.CreateTemp(d.dir, ".download-*.part")
+	// 固定的临时文件名既不会被曲库扫描，也能让暂停和异常任务断点续传。
+	tempName := d.partialPath(options.TaskID)
+	temp, err := os.OpenFile(tempName, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return model.DownloadResult{}, err
 	}
-	tempName := temp.Name()
-	defer func() { temp.Close(); os.Remove(tempName) }()
-
+	defer temp.Close()
+	offset, err := temp.Seek(0, io.SeekEnd)
+	if err != nil {
+		return model.DownloadResult{}, err
+	}
+	// 下载已经完整但标签阶段被进程中断时，直接重新执行标签阶段，不再请求音频资源。
+	if options.ExpectedBytes > 0 && offset >= options.ExpectedBytes {
+		if err := temp.Close(); err != nil {
+			return model.DownloadResult{}, err
+		}
+		return d.finalize(ctx, tempName, target, name, "audio/"+resource.Quality.Format, resource, options)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resource.URL, nil)
 	if err != nil {
 		return model.DownloadResult{}, err
 	}
 	for key, value := range resource.Headers {
 		req.Header.Set(key, value)
+	}
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {
@@ -75,46 +97,96 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, requ
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		return model.DownloadResult{}, fmt.Errorf("resource server returned HTTP %d", resp.StatusCode)
 	}
+	// 服务端不支持 Range 时会返回 200，此时必须从头覆盖，不能把完整文件追加到断点之后。
+	if offset > 0 && resp.StatusCode == http.StatusOK {
+		if err := temp.Truncate(0); err != nil {
+			return model.DownloadResult{}, err
+		}
+		if _, err := temp.Seek(0, io.SeekStart); err != nil {
+			return model.DownloadResult{}, err
+		}
+		offset = 0
+	}
 	contentType := resp.Header.Get("Content-Type")
 	mediaType, _, _ := mime.ParseMediaType(contentType)
 	// 常见的接口错误页是 HTML 或 JSON，不能当作音频保存。
 	if mediaType == "text/html" || mediaType == "application/json" || strings.HasPrefix(mediaType, "text/") {
 		return model.DownloadResult{}, fmt.Errorf("resource server returned %s instead of audio", contentType)
 	}
-	if resp.ContentLength > d.maxBytes {
+	total := int64(0)
+	if resp.ContentLength >= 0 {
+		total = offset + resp.ContentLength
+	}
+	if value := resp.Header.Get("Content-Range"); value != "" {
+		if slash := strings.LastIndexByte(value, '/'); slash >= 0 {
+			if parsed, parseErr := strconv.ParseInt(value[slash+1:], 10, 64); parseErr == nil {
+				total = parsed
+			}
+		}
+	}
+	if total > d.maxBytes {
 		return model.DownloadResult{}, fmt.Errorf("resource exceeds MAX_DOWNLOAD_BYTES")
 	}
 
-	// 即使服务器没有提供 Content-Length，也最多只读取上限加一个字节。
-	written, err := io.Copy(temp, io.LimitReader(resp.Body, d.maxBytes+1))
-	if err != nil {
-		return model.DownloadResult{}, err
+	if options.Progress != nil {
+		options.Progress(offset, total)
 	}
-	if written == 0 {
+	// 分块复制才能持续上报进度；无 Content-Length 时百分比保持 0，但字节数仍会更新。
+	buffer := make([]byte, 128*1024)
+	downloaded := offset
+	for {
+		n, readErr := resp.Body.Read(buffer)
+		if n > 0 {
+			if downloaded+int64(n) > d.maxBytes {
+				return model.DownloadResult{}, fmt.Errorf("resource exceeds MAX_DOWNLOAD_BYTES")
+			}
+			if _, err := temp.Write(buffer[:n]); err != nil {
+				return model.DownloadResult{}, err
+			}
+			downloaded += int64(n)
+			if options.Progress != nil {
+				options.Progress(downloaded, total)
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			return model.DownloadResult{}, readErr
+		}
+	}
+	if downloaded == 0 {
 		return model.DownloadResult{}, errors.New("downloaded resource is empty")
 	}
-	if written > d.maxBytes {
-		return model.DownloadResult{}, fmt.Errorf("resource exceeds MAX_DOWNLOAD_BYTES")
-	}
-	if resp.ContentLength >= 0 && written != resp.ContentLength {
-		return model.DownloadResult{}, fmt.Errorf("incomplete download: expected %d bytes, received %d", resp.ContentLength, written)
+	if total > 0 && downloaded != total {
+		return model.DownloadResult{}, fmt.Errorf("incomplete download: expected %d bytes, received %d", total, downloaded)
 	}
 	if err := temp.Sync(); err != nil {
 		return model.DownloadResult{}, err
 	}
-	if _, err := temp.Seek(0, io.SeekStart); err != nil {
+	if err := temp.Close(); err != nil {
 		return model.DownloadResult{}, err
 	}
+	return d.finalize(ctx, tempName, target, name, contentType, resource, options)
+}
+
+func (d *Downloader) finalize(ctx context.Context, tempName, target, name, contentType string, resource model.Resource, options Options) (model.DownloadResult, error) {
 	if resource.Quality.Format == "flac" {
-		// FLAC 文件应包含 fLaC 标识，借此拦截伪装成音频的错误响应。
+		file, err := os.Open(tempName)
+		if err != nil {
+			return model.DownloadResult{}, err
+		}
 		header := make([]byte, 64*1024)
-		n, _ := temp.Read(header)
+		n, _ := file.Read(header)
+		file.Close()
 		if !bytes.Contains(header[:n], []byte("fLaC")) {
 			return model.DownloadResult{}, errors.New("resource is not a valid FLAC stream")
 		}
 	}
-	if err := temp.Close(); err != nil {
-		return model.DownloadResult{}, err
+	if options.BeforeFinalize != nil {
+		if err := options.BeforeFinalize(ctx, tempName); err != nil {
+			return model.DownloadResult{}, err
+		}
 	}
 	// 硬链接操作具有排他性，不会覆盖用户目录中已经存在的同名文件。
 	if err := os.Link(tempName, target); err != nil {
@@ -128,7 +200,24 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, requ
 	}
 
 	absolute, _ := filepath.Abs(target)
-	return model.DownloadResult{Path: absolute, FileName: name, Size: written, ContentType: contentType}, nil
+	info, err := os.Stat(target)
+	if err != nil {
+		return model.DownloadResult{}, err
+	}
+	return model.DownloadResult{Path: absolute, FileName: name, Size: info.Size(), ContentType: contentType}, nil
+}
+
+// RemovePartial 删除取消或删除任务遗留的断点文件。
+func (d *Downloader) RemovePartial(taskID int64) error {
+	err := os.Remove(d.partialPath(taskID))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func (d *Downloader) partialPath(taskID int64) string {
+	return filepath.Join(d.dir, fmt.Sprintf(".download-%d.part", taskID))
 }
 
 func safeName(value string) string {

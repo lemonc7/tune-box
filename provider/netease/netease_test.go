@@ -59,6 +59,26 @@ func TestSearchUsesConfiguredAPI(t *testing.T) {
 	}
 }
 
+func TestMetadataUsesLyricAndSongDetail(t *testing.T) {
+	client := &http.Client{Transport: roundTripper(func(request *http.Request) (*http.Response, error) {
+		body := `{"code":200,"lrc":{"lyric":"[00:29.26]故事的小黄花"}}`
+		if request.URL.Path == "/song/detail" {
+			body = `{"code":200,"songs":[{"id":1,"name":"晴天","ar":[{"id":1,"name":"周杰伦"}],"al":{"id":2,"name":"叶惠美","picUrl":"https://image.example.test/cover.jpg"}}]}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	metadata, err := New(client, "https://netease.example.test", "", "").Metadata(context.Background(), "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Name != "晴天" || metadata.Album != "叶惠美" || len(metadata.Artists) != 1 || metadata.Artists[0] != "周杰伦" {
+		t.Fatalf("unexpected metadata: %#v", metadata)
+	}
+	if metadata.Lyrics != "[00:29.26]故事的小黄花" || metadata.CoverURL == "" {
+		t.Fatalf("missing lyrics or cover: %#v", metadata)
+	}
+}
+
 func TestResolveUsesExtendedResolverWithoutCallingNeteaseDownloadAPI(t *testing.T) {
 	var extendedCalls, neteaseCalls int
 	client := &http.Client{Transport: roundTripper(func(request *http.Request) (*http.Response, error) {
