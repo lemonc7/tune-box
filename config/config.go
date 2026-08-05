@@ -2,8 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -14,6 +15,7 @@ type Config struct {
 	Server    ServerConfig    `yaml:"server"`
 	Download  DownloadConfig  `yaml:"download"`
 	Providers ProvidersConfig `yaml:"providers"`
+	Database  DatabaseConfig  `yaml:"database"`
 }
 
 // ServerConfig 定义监听端口以及两类 HTTP 操作的超时时间。
@@ -48,42 +50,61 @@ type NeteaseConfig struct {
 	ExtendedResolveURL string `yaml:"extended_resolve_url" env:"NETEASE_EXTENDED_RESOLVE_URL"`
 }
 
+// DatabaseConfig 定义 SQLite 连接池和锁等待配置。
+// 外键、WAL 等数据库约束固定写入 DSN，不允许通过配置关闭。
+type DatabaseConfig struct {
+	MaxOpenConns    int           `yaml:"max_open_conns" env:"LENSY_DB_MAX_OPEN_CONNS" env-default:"4"`
+	MaxIdleConns    int           `yaml:"max_idle_conns" env:"LENSY_DB_MAX_IDLE_CONNS" env-default:"4"`
+	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"LENSY_DB_CONN_MAX_LIFETIME" env-default:"0s"`
+	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time" env:"LENSY_DB_CONN_MAX_IDLE_TIME" env-default:"0s"`
+	BusyTimeout     time.Duration `yaml:"busy_timeout" env:"LENSY_DB_BUSY_TIMEOUT" env-default:"5s"`
+}
+
+// DSN 返回 modernc.org/sqlite 使用的连接字符串。
+// PRAGMA 写入 DSN 后会应用到 database/sql 创建的每一条连接。
+func (c DatabaseConfig) DSN(path string) (string, error) {
+	busyMilliseconds := c.BusyTimeout.Milliseconds()
+	if busyMilliseconds < 1 {
+		return "", fmt.Errorf("数据库锁等待时间不能小于 %s", time.Millisecond)
+	}
+
+	if path == ":memory:" {
+		query := url.Values{
+			"mode":    {"memory"},
+			"cache":   {"shared"},
+			"_pragma": pragmaValues(busyMilliseconds),
+		}
+		return "file:lensy?" + query.Encode(), nil
+	}
+
+	u := &url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	query := u.Query()
+	for _, pragma := range pragmaValues(busyMilliseconds) {
+		query.Add("_pragma", pragma)
+	}
+	u.RawQuery = query.Encode()
+	return u.String(), nil
+}
+
 func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := cleanenv.ReadConfig(path, &cfg); err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	if err := cfg.validate(); err != nil {
-		return nil, err
-	}
-
 	return &cfg, nil
-}
-
-func (c Config) validate() error {
-	if c.Server.Port < 1 || c.Server.Port > 65535 {
-		return fmt.Errorf("server.port/PORT must be between 1 and 65535")
-	}
-	if c.Server.HTTPTimeout <= 0 {
-		return fmt.Errorf("server.http_timeout/HTTP_TIMEOUT must be positive")
-	}
-	if c.Server.DownloadTimeout <= 0 {
-		return fmt.Errorf("server.download_timeout/DOWNLOAD_TIMEOUT must be positive")
-	}
-	if strings.TrimSpace(c.Download.Dir) == "" {
-		return fmt.Errorf("download.dir/DOWNLOAD_DIR is required")
-	}
-	if c.Download.MaxBytes <= 0 {
-		return fmt.Errorf("download.max_bytes/MAX_DOWNLOAD_BYTES must be positive")
-	}
-	if c.Providers.Netease.BaseURL == "" {
-		return fmt.Errorf("providers.netease.base_url/NETEASE_API_BASE_URL is required")
-	}
-	return nil
 }
 
 // Address 将纯端口转换成 Echo 所需的监听地址格式。
 func (c ServerConfig) Address() string {
 	return ":" + strconv.Itoa(c.Port)
+}
+
+func pragmaValues(busyMilliseconds int64) []string {
+	return []string{
+		"foreign_keys(1)",
+		"journal_mode(WAL)",
+		"synchronous(NORMAL)",
+		"busy_timeout(" + strconv.FormatInt(busyMilliseconds, 10) + ")",
+	}
 }
