@@ -1,12 +1,6 @@
 -- name: CreateDownload :one
 INSERT INTO downloads (
-  provider,
-  track_id, 
-  quality, 
-  name, 
-  artists, 
-  album, 
-  cover_url
+    provider, track_id, quality, name, artists, album, cover_url
 )
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(provider, track_id, quality) DO NOTHING
@@ -96,7 +90,7 @@ WHERE id = ?
 -- name: PauseDownload :execrows
 UPDATE downloads
 SET status = 'paused',
-  updated_at = CURRENT_TIMESTAMP
+    updated_at = CURRENT_TIMESTAMP
 WHERE id = ?
   AND status IN ('pending', 'resolving', 'downloading');
 
@@ -137,27 +131,7 @@ WHERE id = ?
 -- name: ListDownloads :many
 SELECT * FROM downloads
 ORDER BY id DESC
-LIMIT ?;
-
--- name: UpsertLibraryFile :exec
-INSERT INTO library_files (
-  download_id,
-  name, 
-  artists, 
-  file_name, 
-  extension, 
-  size, 
-  modified_at
-)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(download_id) DO UPDATE SET
-  name = excluded.name,
-  artists = excluded.artists,
-  file_name = excluded.file_name,
-  extension = excluded.extension,
-  size = excluded.size,
-  modified_at = excluded.modified_at,
-  updated_at = CURRENT_TIMESTAMP;
+LIMIT @limit OFFSET @offset;
 
 -- name: RequeueMissingDownload :execrows
 UPDATE downloads
@@ -174,11 +148,56 @@ SET status = 'pending',
 WHERE id = ?
   AND status = 'completed';
 
--- name: SearchLibraryFiles :many
-SELECT * FROM library_files
-WHERE (
-  name LIKE '%' || @keyword || '%'
-  OR artists LIKE '%' || @keyword || '%'
-)
-ORDER BY created_at DESC
+-- name: UpsertSong :one
+INSERT INTO songs (path, name, extension)
+VALUES (?, ?, ?)
+ON CONFLICT(path) DO UPDATE SET
+    name = excluded.name,
+    extension = excluded.extension,
+    updated_at = CURRENT_TIMESTAMP
+RETURNING id;
+
+-- name: UpsertArtist :one
+INSERT INTO artists (name) 
+VALUES (?) ON CONFLICT(name) DO NOTHING 
+RETURNING id;
+
+-- name: AddSongArtist :exec
+INSERT OR IGNORE INTO song_artists (song_id, artist_id) 
+VALUES (?, ?);
+
+-- name: ClearSongArtists :exec
+DELETE FROM song_artists 
+WHERE song_id = ?;
+
+-- name: SearchSongs :many
+SELECT
+    s.id,
+    s.name,
+    s.path,
+    GROUP_CONCAT(a.name, ', ') AS artists
+FROM songs s
+LEFT JOIN song_artists sa
+    ON s.id = sa.song_id
+LEFT JOIN artists a
+    ON sa.artist_id = a.id
+WHERE
+    s.name LIKE '%' || @keyword || '%'
+    OR a.name LIKE '%' || @keyword || '%'
+GROUP BY s.id
+ORDER BY s.created_at DESC
 LIMIT @limit;
+
+-- name: ListSongs :many
+SELECT
+    s.id,
+    s.name,
+    GROUP_CONCAT(a.name, ', ') AS artists
+FROM songs s
+LEFT JOIN song_artists sa
+    ON s.id = sa.song_id
+LEFT JOIN artists a
+    ON sa.artist_id = a.id
+GROUP BY s.id
+ORDER BY s.created_at DESC
+LIMIT @limit OFFSET @offset;

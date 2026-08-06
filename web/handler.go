@@ -175,6 +175,7 @@ func (h *Handler) DownloadsPage(c *echo.Context) error {
 	items, err := h.Music.ListDownloads(
 		c.Request().Context(),
 		100,
+		0,
 	)
 	if err != nil {
 		return err
@@ -191,6 +192,7 @@ func (h *Handler) DownloadList(c *echo.Context) error {
 	items, err := h.Music.ListDownloads(
 		c.Request().Context(),
 		100,
+		0,
 	)
 	if err != nil {
 		return renderError(c, err)

@@ -51,7 +51,7 @@ func (fakeProvider) Metadata(context.Context, string) (model.MusicMetadata, erro
 
 func TestStreamableHTTPTools(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	music := service.NewMusic(provider.NewRegistry(fakeProvider{}), nil, nil, nil, t.TempDir(), 1, logger)
+	music := service.NewMusic(nil, nil, provider.NewRegistry(fakeProvider{}), nil, nil, t.TempDir(), 1, logger)
 	httpServer := httptest.NewServer(New(music, logger))
 	defer httpServer.Close()
 

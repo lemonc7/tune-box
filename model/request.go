@@ -11,7 +11,8 @@ type SearchRequest struct {
 
 // ListRequest 是下载历史和本地曲库的分页数量参数。
 type ListRequest struct {
-	Limit int `query:"limit" validate:"required,gte=1,lte=500"`
+	Limit  int `query:"limit" validate:"required,gte=1,lte=100"`
+	Offset int `query:"offset" validate:"gte=0"`
 }
 
 // ResolveRequest 指定需要解析的音乐源、歌曲和音质。
@@ -30,4 +31,9 @@ type DownloadRequest struct {
 	Album      string   `json:"album,omitempty"`
 	CoverURL   string   `json:"coverUrl,omitempty"`
 	DurationMS int64    `json:"durationMs,omitempty"`
+}
+
+type SearchSongsRequest struct {
+	Keyword string `query:"keyword" validate:"required"`
+	Limit   int    `query:"limit" validate:"required,gte=1"`
 }

@@ -174,10 +174,63 @@ func (r *ResourceHandler) Downloads(c *echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return err
 	}
-	result, err := r.Music.ListDownloads(c.Request().Context(), int64(req.Limit))
+	result, err := r.Music.ListDownloads(
+		c.Request().Context(),
+		int64(req.Limit),
+		int64(req.Offset),
+	)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	return c.JSON(http.StatusOK, model.Response{
+		Code: http.StatusOK,
+		Msg:  "ok",
+		Data: result,
+	})
+}
+
+func (r *ResourceHandler) ListSongs(c *echo.Context) error {
+	var req model.ListRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "bad request").Wrap(err)
+	}
+	if err := c.Validate(&req); err != nil {
+		return err
+	}
+
+	result, err := r.Music.ListSongs(
+		c.Request().Context(),
+		int64(req.Limit),
+		int64(req.Offset),
+	)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, model.Response{
+		Code: http.StatusOK,
+		Msg:  "ok",
+		Data: result,
+	})
+}
+
+func (r *ResourceHandler) SearchSongs(c *echo.Context) error {
+	var req model.SearchSongsRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "bad request").Wrap(err)
+	}
+	if err := c.Validate(&req); err != nil {
+		return err
+	}
+
+	result, err := r.Music.SearchSongs(
+		c.Request().Context(),
+		req.Keyword,
+		int64(req.Limit),
+	)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
 	return c.JSON(http.StatusOK, model.Response{
 		Code: http.StatusOK,
 		Msg:  "ok",

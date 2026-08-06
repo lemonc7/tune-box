@@ -69,7 +69,8 @@ type taskOutput struct {
 }
 
 type listInput struct {
-	Limit int `json:"limit,omitempty" jsonschema:"返回数量，默认 50，最大 500"`
+	Limit  int `json:"limit,omitempty" jsonschema:"返回数量，默认 50，最大 500"`
+	Offset int `json:"offset,omitempty" jsonschema:"偏移量，默认 0"`
 }
 type downloadsOutput struct {
 	Downloads []model.DownloadHistory `json:"downloads"`
@@ -155,7 +156,7 @@ func (s *Server) listDownloads(ctx context.Context, _ *protocol.CallToolRequest,
 	if err != nil {
 		return nil, downloadsOutput{}, err
 	}
-	rows, err := s.music.ListDownloads(ctx, int64(limit))
+	rows, err := s.music.ListDownloads(ctx, int64(limit), int64(input.Offset))
 	if err != nil {
 		return nil, downloadsOutput{}, err
 	}

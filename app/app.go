@@ -105,24 +105,14 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 			cfg.Providers.Netease.ExtendedResolveURL,
 		),
 	)
-	db, err := database.New(cfg.Database)
+	store, err := database.New(cfg.Database)
 	if err != nil {
 		return nil, fmt.Errorf("initialize database: %w", err)
 	}
-	downloader := download.New(
-		downloadClient,
-		cfg.Download.Dir,
-		cfg.Download.MaxBytes,
-	)
-	musicService := service.NewMusic(
-		registry,
-		downloader,
-		tag.New(client),
-		repo.New(db),
-		cfg.Download.Dir,
-		cfg.Download.MaxConcurrent,
-		logger,
-	)
+	db := store
+	queries := repo.New(db)
+	downloader := download.New(downloadClient, cfg.Download.Dir, cfg.Download.MaxBytes)
+	musicService := service.NewMusic(db, queries, registry, downloader, tag.New(client), cfg.Download.Dir, cfg.Download.MaxConcurrent, logger)
 
 	if err := musicService.Start(context.Background()); err != nil {
 		db.Close()

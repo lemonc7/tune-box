@@ -4,6 +4,11 @@
 
 package repo
 
+type Artist struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 type Download struct {
 	ID              int64   `json:"id"`
 	Provider        string  `json:"provider"`
@@ -27,15 +32,16 @@ type Download struct {
 	UpdatedAt       string  `json:"updated_at"`
 }
 
-type LibraryFile struct {
-	ID         int64  `json:"id"`
-	DownloadID int64  `json:"download_id"`
-	Name       string `json:"name"`
-	Artists    string `json:"artists"`
-	FileName   string `json:"file_name"`
-	Extension  string `json:"extension"`
-	Size       int64  `json:"size"`
-	ModifiedAt string `json:"modified_at"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
+type Song struct {
+	ID        int64  `json:"id"`
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	Extension string `json:"extension"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type SongArtist struct {
+	SongID   int64 `json:"song_id"`
+	ArtistID int64 `json:"artist_id"`
 }

@@ -1,5 +1,8 @@
-DROP TABLE IF EXISTS library_files;
+DROP TABLE IF EXISTS song_artists;
+DROP TABLE IF EXISTS artists;
+DROP TABLE IF EXISTS songs;
 DROP TABLE IF EXISTS downloads;
 DROP TABLE IF EXISTS music_artists;
 DROP TABLE IF EXISTS musics;
 DROP TABLE IF EXISTS artists;
+DROP TABLE IF EXISTS library_files;

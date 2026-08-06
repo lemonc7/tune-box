@@ -23,19 +23,28 @@ CREATE TABLE downloads (
   UNIQUE(provider, track_id, quality)
 );
 
-CREATE TABLE library_files (
+CREATE TABLE songs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  download_id INTEGER NOT NULL UNIQUE,
-  name TEXT NOT NULL DEFAULT '',
-  artists TEXT NOT NULL DEFAULT '[]',
-  file_name TEXT NOT NULL,
+  path TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
   extension TEXT NOT NULL,
-  size INTEGER NOT NULL,
-  modified_at TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE CASCADE
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE artists (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE song_artists (
+  song_id INTEGER NOT NULL,
+  artist_id INTEGER NOT NULL,
+  PRIMARY KEY (song_id, artist_id),
+  FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE,
+  FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_download_status ON downloads(status);
 CREATE INDEX idx_download_created_at ON downloads(created_at DESC);
+CREATE INDEX idx_songs_name ON songs(name);

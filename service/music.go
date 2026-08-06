@@ -22,12 +22,12 @@ import (
 
 var ErrDownloadState = errors.New("当前任务状态不支持该操作")
 
-// Music 统一 REST、MCP 共用的搜索、解析、下载和历史记录逻辑。
 type Music struct {
+	db          *sql.DB
+	queries     *repo.Queries
 	registry    *provider.Registry
 	downloader  *download.Downloader
 	embedder    *tag.Embedder
-	queries     repo.Querier
 	downloadDir string
 	logger      *slog.Logger
 	queue       chan int64
@@ -39,21 +39,22 @@ type Music struct {
 	running     map[int64]context.CancelFunc
 }
 
-// NewMusic 创建供 REST 和 MCP 共用的音乐业务服务。
 func NewMusic(
+	db *sql.DB,
+	queries *repo.Queries,
 	registry *provider.Registry,
 	downloader *download.Downloader,
 	embedder *tag.Embedder,
-	queries repo.Querier,
 	downloadDir string,
 	workers int,
 	logger *slog.Logger,
 ) *Music {
 	return &Music{
+		db:          db,
+		queries:     queries,
 		registry:    registry,
 		downloader:  downloader,
 		embedder:    embedder,
-		queries:     queries,
 		downloadDir: downloadDir,
 		workers:     workers,
 		logger:      logger,
@@ -62,28 +63,31 @@ func NewMusic(
 	}
 }
 
-// Start 恢复上次中断的任务，并启动固定数量的下载 worker。
 func (s *Music) Start(ctx context.Context) error {
-	if err := s.queries.ResetInterruptedDownloads(ctx, new("服务重启，任务已重新入队")); err != nil {
+	// 应用启动，重新启动未完成的任务
+	if err := s.queries.ResetInterruptedDownloads(
+		ctx,
+		new("服务重启，任务已重新入队"),
+	); err != nil {
 		return err
 	}
-
 	ids, err := s.queries.ListPendingDownloadIDs(ctx)
 	if err != nil {
 		return err
 	}
 	s.ctx, s.stop = context.WithCancel(context.Background())
 
+	// 启动worker
 	for i := 0; i < s.workers; i++ {
 		s.wait.Go(s.worker)
 	}
+	// 新增任务
 	for _, id := range ids {
 		s.queue <- id
 	}
 	return nil
 }
 
-// Close 停止 worker。正在下载的任务保留断点，下次启动自动继续。
 func (s *Music) Close() {
 	if s.stop != nil {
 		s.stop()
@@ -91,16 +95,19 @@ func (s *Music) Close() {
 	}
 }
 
-// Providers 返回所有已注册音乐源的状态。
 func (s *Music) Providers() []provider.Info { return s.registry.List() }
 
-// Search 调用指定音乐源搜索，并按需过滤有损音质。
 func (s *Music) Search(ctx context.Context, req model.SearchRequest) (model.SearchResult, error) {
 	item, err := s.registry.Get(req.Provider)
 	if err != nil {
 		return model.SearchResult{}, err
 	}
-	result, err := item.Search(ctx, strings.TrimSpace(req.Query), req.Page, req.Limit)
+	result, err := item.Search(
+		ctx,
+		strings.TrimSpace(req.Query),
+		req.Page,
+		req.Limit,
+	)
 	if err != nil {
 		return model.SearchResult{}, err
 	}
@@ -110,7 +117,6 @@ func (s *Music) Search(ctx context.Context, req model.SearchRequest) (model.Sear
 	return result, nil
 }
 
-// Resolve 调用指定音乐源解析临时下载资源。
 func (s *Music) Resolve(ctx context.Context, req model.ResolveRequest) (model.Resource, error) {
 	item, err := s.registry.Get(req.Provider)
 	if err != nil {
@@ -119,7 +125,6 @@ func (s *Music) Resolve(ctx context.Context, req model.ResolveRequest) (model.Re
 	return item.Resolve(ctx, req.TrackID, req.Quality)
 }
 
-// Download 创建异步下载任务。同一平台同一歌曲同音质通过 UNIQUE 约束自动去重。
 func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.DownloadTaskResult, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -137,14 +142,13 @@ func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.
 		Provider: req.Provider,
 		TrackID:  req.TrackID,
 		Quality:  req.Quality,
-		Name:     req.Name,
+		Name:     name,
 		Artists:  string(artists),
 		Album:    &req.Album,
 		CoverUrl: &req.CoverURL,
 	})
 	created := true
 	if errors.Is(err, sql.ErrNoRows) {
-		// 出错或者已存在
 		created = false
 		row, err = s.queries.GetDownloadByKey(ctx, repo.GetDownloadByKeyParams{
 			Provider: req.Provider,
@@ -152,7 +156,6 @@ func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.
 			Quality:  req.Quality,
 		})
 	}
-
 	if err != nil {
 		return model.DownloadTaskResult{}, fmt.Errorf("create download task: %w", err)
 	}
@@ -162,10 +165,13 @@ func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.
 			return model.DownloadTaskResult{}, err
 		}
 	}
-	return model.DownloadTaskResult{DownloadID: row.ID, Status: row.Status, Duplicate: !created}, nil
+	return model.DownloadTaskResult{
+		DownloadID: row.ID,
+		Status:     row.Status,
+		Duplicate:  !created,
+	}, nil
 }
 
-// 将下载任务放入队列，等待worker处理
 func (s *Music) enqueue(ctx context.Context, id int64) error {
 	select {
 	case s.queue <- id:
@@ -177,7 +183,6 @@ func (s *Music) enqueue(ctx context.Context, id int64) error {
 	}
 }
 
-// worker下载任务
 func (s *Music) worker() {
 	for {
 		select {
@@ -220,7 +225,7 @@ func (s *Music) runDownload(id int64) {
 		}
 		return
 	}
-	rows, err := s.queries.MarkDownloadDownloading(taskCtx, repo.MarkDownloadDownloadingParams{
+	downloading, err := s.queries.MarkDownloadDownloading(taskCtx, repo.MarkDownloadDownloadingParams{
 		ID:          id,
 		ResourceUrl: &resource.URL,
 	})
@@ -230,10 +235,9 @@ func (s *Music) runDownload(id int64) {
 		}
 		return
 	}
-	if !(rows > 0) {
+	if downloading == 0 {
 		return
 	}
-
 	lastUpdate := time.Time{}
 	result, err := s.downloader.Download(taskCtx, resource, download.Options{
 		TaskID:        id,
@@ -255,11 +259,11 @@ func (s *Music) runDownload(id int64) {
 			progressCancel()
 		},
 		BeforeFinalize: func(ctx context.Context, path string) error {
-			rows, err := s.queries.MarkDownloadTagging(ctx, id)
+			tagging, err := s.queries.MarkDownloadTagging(ctx, id)
 			if err != nil {
 				return err
 			}
-			if !(rows > 0) {
+			if tagging == 0 {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
@@ -284,11 +288,7 @@ func (s *Music) runDownload(id int64) {
 			}
 			providerMetadata, metadataErr := item.Metadata(ctx, row.TrackID)
 			if metadataErr != nil {
-				s.logger.Warn(
-					"fetch music metadata",
-					"provider", row.Provider,
-					"trackId", row.TrackID,
-					"error", metadataErr)
+				s.logger.Warn("fetch music metadata", "provider", row.Provider, "trackId", row.TrackID, "error", metadataErr)
 			}
 			if providerMetadata.Name != "" &&
 				(metadata.Name == "" || metadata.Name == row.Provider+"-"+row.TrackID) {
@@ -313,9 +313,8 @@ func (s *Music) runDownload(id int64) {
 		}
 		return
 	}
-
 	finishCtx, finishCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	rs, err := s.queries.MarkDownloadCompleted(finishCtx, repo.MarkDownloadCompletedParams{
+	completed, err := s.queries.MarkDownloadCompleted(finishCtx, repo.MarkDownloadCompletedParams{
 		ID:              id,
 		Path:            &result.Path,
 		Size:            &result.Size,
@@ -328,34 +327,66 @@ func (s *Music) runDownload(id int64) {
 		s.failDownload(id, err)
 		return
 	}
-	if !(rs > 0) {
+	if completed == 0 {
 		os.Remove(result.Path)
 		return
 	}
-
 	info, statErr := os.Stat(result.Path)
 	if statErr == nil {
-		if err := s.queries.UpsertLibraryFile(taskCtx, repo.UpsertLibraryFileParams{
-			DownloadID: id,
-			Name:       row.Name,
-			Artists:    row.Artists,
-			FileName:   info.Name(),
-			Extension:  strings.TrimPrefix(strings.ToLower(filepath.Ext(info.Name())), "."),
-			Size:       info.Size(),
-			ModifiedAt: info.ModTime().Format(time.RFC3339Nano),
-		}); err != nil {
-			s.logger.Error(
-				"record downloaded library file",
-				"path", result.Path,
-				"error", err,
-			)
+		var artistNames []string
+		json.Unmarshal([]byte(row.Artists), &artistNames)
+		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(info.Name())), ".")
+		if err := s.upsertSong(taskCtx, result.Path, row.Name, ext, artistNames); err != nil {
+			s.logger.Error("record downloaded library file", "path", result.Path, "error", err)
 		}
 	}
 }
 
-// ListDownloads 返回统一格式的下载历史。
-func (s *Music) ListDownloads(ctx context.Context, limit int64) ([]model.DownloadHistory, error) {
-	rows, err := s.queries.ListDownloads(ctx, limit)
+func (s *Music) upsertSong(ctx context.Context, path string, name string, extension string, artistNames []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	q := s.queries.WithTx(tx)
+
+	songID, err := q.UpsertSong(ctx, repo.UpsertSongParams{
+		Path:      path,
+		Name:      name,
+		Extension: extension,
+	})
+	if err != nil {
+		return fmt.Errorf("upsert song: %w", err)
+	}
+
+	if err := q.ClearSongArtists(ctx, songID); err != nil {
+		return fmt.Errorf("clear song artists: %w", err)
+	}
+
+	for _, artistName := range artistNames {
+		if artistName == "" {
+			continue
+		}
+		artistID, err := q.UpsertArtist(ctx, artistName)
+		if err != nil {
+			return fmt.Errorf("upsert artist %q: %w", artistName, err)
+		}
+		if err := q.AddSongArtist(ctx, repo.AddSongArtistParams{
+			SongID:   songID,
+			ArtistID: artistID},
+		); err != nil {
+			return fmt.Errorf("add song artist: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (s *Music) ListDownloads(ctx context.Context, limit, offset int64) ([]model.DownloadHistory, error) {
+	rows, err := s.queries.ListDownloads(ctx, repo.ListDownloadsParams{
+		Offset: offset,
+		Limit:  limit,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -399,13 +430,12 @@ func (s *Music) ListDownloads(ctx context.Context, limit int64) ([]model.Downloa
 	return result, nil
 }
 
-// PauseDownload 暂停排队或正在执行的任务，并保留已下载的断点文件。
 func (s *Music) PauseDownload(ctx context.Context, id int64) (model.DownloadTaskResult, error) {
-	rows, err := s.queries.PauseDownload(ctx, id)
+	changed, err := s.queries.PauseDownload(ctx, id)
 	if err != nil {
 		return model.DownloadTaskResult{}, err
 	}
-	if !(rows > 0) {
+	if changed == 0 {
 		if _, err := s.queries.GetDownload(ctx, id); err != nil {
 			return model.DownloadTaskResult{}, err
 		}
@@ -415,13 +445,12 @@ func (s *Music) PauseDownload(ctx context.Context, id int64) (model.DownloadTask
 	return model.DownloadTaskResult{DownloadID: id, Status: "paused"}, nil
 }
 
-// ResumeDownload 将 paused 任务放回队列，下载器会尝试从断点继续。
 func (s *Music) ResumeDownload(ctx context.Context, id int64) (model.DownloadTaskResult, error) {
-	rows, err := s.queries.ResumeDownload(ctx, id)
+	changed, err := s.queries.ResumeDownload(ctx, id)
 	if err != nil {
 		return model.DownloadTaskResult{}, err
 	}
-	if !(rows > 0) {
+	if changed == 0 {
 		if _, err := s.queries.GetDownload(ctx, id); err != nil {
 			return model.DownloadTaskResult{}, err
 		}
@@ -437,16 +466,14 @@ func (s *Music) ResumeDownload(ctx context.Context, id int64) (model.DownloadTas
 	return model.DownloadTaskResult{DownloadID: id, Status: "pending"}, nil
 }
 
-// CancelDownload 终止任务并删除断点文件。
 func (s *Music) CancelDownload(ctx context.Context, id int64) (model.DownloadTaskResult, error) {
-	rows, err := s.queries.CancelDownload(ctx, repo.CancelDownloadParams{
+	changed, err := s.queries.CancelDownload(ctx, repo.CancelDownloadParams{
 		ID:           id,
-		ErrorMessage: new("任务已取消"),
-	})
+		ErrorMessage: new("任务已取消")})
 	if err != nil {
 		return model.DownloadTaskResult{}, err
 	}
-	if !(rows > 0) {
+	if changed == 0 {
 		if _, err := s.queries.GetDownload(ctx, id); err != nil {
 			return model.DownloadTaskResult{}, err
 		}
@@ -459,13 +486,12 @@ func (s *Music) CancelDownload(ctx context.Context, id int64) (model.DownloadTas
 	return model.DownloadTaskResult{DownloadID: id, Status: "cancelled"}, nil
 }
 
-// RetryDownload 重试 failed 或 cancelled 任务。失败任务若有断点会继续下载。
 func (s *Music) RetryDownload(ctx context.Context, id int64) (model.DownloadTaskResult, error) {
-	rows, err := s.queries.RetryDownload(ctx, id)
+	changed, err := s.queries.RetryDownload(ctx, id)
 	if err != nil {
 		return model.DownloadTaskResult{}, err
 	}
-	if !(rows > 0) {
+	if changed == 0 {
 		if _, err := s.queries.GetDownload(ctx, id); err != nil {
 			return model.DownloadTaskResult{}, err
 		}
@@ -476,12 +502,11 @@ func (s *Music) RetryDownload(ctx context.Context, id int64) (model.DownloadTask
 	case <-ctx.Done():
 		return model.DownloadTaskResult{}, ctx.Err()
 	case <-s.ctx.Done():
-		return model.DownloadTaskResult{}, errors.New("download service is stopped")
+		return model.DownloadTaskResult{}, fmt.Errorf("download service is stopped")
 	}
 	return model.DownloadTaskResult{DownloadID: id, Status: "pending"}, nil
 }
 
-// DeleteDownload 删除任务记录和断点文件，已完成的音乐文件不会被删除。
 func (s *Music) DeleteDownload(ctx context.Context, id int64) error {
 	row, err := s.queries.GetDownload(ctx, id)
 	if err != nil {
@@ -490,20 +515,34 @@ func (s *Music) DeleteDownload(ctx context.Context, id int64) error {
 	if row.Status == "resolving" || row.Status == "downloading" || row.Status == "tagging" {
 		if _, err := s.queries.CancelDownload(ctx, repo.CancelDownloadParams{
 			ID:           id,
-			ErrorMessage: new("任务已取消"),
-		}); err != nil {
+			ErrorMessage: new("任务已取消")},
+		); err != nil {
 			return err
 		}
 		s.cancelRunning(id)
 	}
-	rows, err := s.queries.DeleteDownload(ctx, id)
+	deleted, err := s.queries.DeleteDownload(ctx, id)
 	if err != nil {
 		return err
 	}
-	if !(rows > 0) {
+	if deleted == 0 {
 		return ErrDownloadState
 	}
 	return s.downloader.RemovePartial(id)
+}
+
+func (s *Music) ListSongs(ctx context.Context, offset, limit int64) ([]repo.ListSongsRow, error) {
+	return s.queries.ListSongs(ctx, repo.ListSongsParams{
+		Offset: offset,
+		Limit:  limit,
+	})
+}
+
+func (s *Music) SearchSongs(ctx context.Context, keyword string, limit int64) ([]repo.SearchSongsRow, error) {
+	return s.queries.SearchSongs(ctx, repo.SearchSongsParams{
+		Keyword: &keyword,
+		Limit:   limit,
+	})
 }
 
 func (s *Music) cancelRunning(id int64) {
@@ -522,10 +561,6 @@ func (s *Music) failDownload(id int64, cause error) {
 		ID:           id,
 		ErrorMessage: new(cause.Error()),
 	}); err != nil {
-		s.logger.Error(
-			"mark download failed",
-			"downloadId", id,
-			"error", err,
-		)
+		s.logger.Error("mark download failed", "downloadId", id, "error", err)
 	}
 }

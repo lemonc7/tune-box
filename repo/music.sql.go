@@ -9,6 +9,21 @@ import (
 	"context"
 )
 
+const addSongArtist = `-- name: AddSongArtist :exec
+INSERT OR IGNORE INTO song_artists (song_id, artist_id) 
+VALUES (?, ?)
+`
+
+type AddSongArtistParams struct {
+	SongID   int64 `json:"song_id"`
+	ArtistID int64 `json:"artist_id"`
+}
+
+func (q *Queries) AddSongArtist(ctx context.Context, arg AddSongArtistParams) error {
+	_, err := q.db.ExecContext(ctx, addSongArtist, arg.SongID, arg.ArtistID)
+	return err
+}
+
 const cancelDownload = `-- name: CancelDownload :execrows
 UPDATE downloads
 SET status = 'cancelled',
@@ -73,15 +88,19 @@ func (q *Queries) ClaimDownload(ctx context.Context, id int64) (Download, error)
 	return i, err
 }
 
+const clearSongArtists = `-- name: ClearSongArtists :exec
+DELETE FROM song_artists 
+WHERE song_id = ?
+`
+
+func (q *Queries) ClearSongArtists(ctx context.Context, songID int64) error {
+	_, err := q.db.ExecContext(ctx, clearSongArtists, songID)
+	return err
+}
+
 const createDownload = `-- name: CreateDownload :one
 INSERT INTO downloads (
-  provider,
-  track_id, 
-  quality, 
-  name, 
-  artists, 
-  album, 
-  cover_url
+    provider, track_id, quality, name, artists, album, cover_url
 )
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(provider, track_id, quality) DO NOTHING
@@ -225,11 +244,16 @@ func (q *Queries) GetDownloadByKey(ctx context.Context, arg GetDownloadByKeyPara
 const listDownloads = `-- name: ListDownloads :many
 SELECT id, provider, track_id, quality, name, artists, album, cover_url, status, downloaded_bytes, total_bytes, attempt, resource_url, path, size, error_message, created_at, started_at, finished_at, updated_at FROM downloads
 ORDER BY id DESC
-LIMIT ?
+LIMIT ?2 OFFSET ?1
 `
 
-func (q *Queries) ListDownloads(ctx context.Context, limit int64) ([]Download, error) {
-	rows, err := q.db.QueryContext(ctx, listDownloads, limit)
+type ListDownloadsParams struct {
+	Offset int64 `json:"offset"`
+	Limit  int64 `json:"limit"`
+}
+
+func (q *Queries) ListDownloads(ctx context.Context, arg ListDownloadsParams) ([]Download, error) {
+	rows, err := q.db.QueryContext(ctx, listDownloads, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -291,6 +315,55 @@ func (q *Queries) ListPendingDownloadIDs(ctx context.Context) ([]int64, error) {
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSongs = `-- name: ListSongs :many
+SELECT
+    s.id,
+    s.name,
+    GROUP_CONCAT(a.name, ', ') AS artists
+FROM songs s
+LEFT JOIN song_artists sa
+    ON s.id = sa.song_id
+LEFT JOIN artists a
+    ON sa.artist_id = a.id
+GROUP BY s.id
+ORDER BY s.created_at DESC
+LIMIT ?2 OFFSET ?1
+`
+
+type ListSongsParams struct {
+	Offset int64 `json:"offset"`
+	Limit  int64 `json:"limit"`
+}
+
+type ListSongsRow struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Artists string `json:"artists"`
+}
+
+func (q *Queries) ListSongs(ctx context.Context, arg ListSongsParams) ([]ListSongsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSongs, arg.Offset, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSongsRow
+	for rows.Next() {
+		var i ListSongsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Artists); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -399,7 +472,7 @@ func (q *Queries) MarkDownloadTagging(ctx context.Context, id int64) (int64, err
 const pauseDownload = `-- name: PauseDownload :execrows
 UPDATE downloads
 SET status = 'paused',
-  updated_at = CURRENT_TIMESTAMP
+    updated_at = CURRENT_TIMESTAMP
 WHERE id = ?
   AND status IN ('pending', 'resolving', 'downloading')
 `
@@ -488,41 +561,51 @@ func (q *Queries) RetryDownload(ctx context.Context, id int64) (int64, error) {
 	return result.RowsAffected()
 }
 
-const searchLibraryFiles = `-- name: SearchLibraryFiles :many
-SELECT id, download_id, name, artists, file_name, extension, size, modified_at, created_at, updated_at FROM library_files
-WHERE (
-  name LIKE '%' || ?1 || '%'
-  OR artists LIKE '%' || ?1 || '%'
-)
-ORDER BY created_at DESC
+const searchSongs = `-- name: SearchSongs :many
+SELECT
+    s.id,
+    s.name,
+    s.path,
+    GROUP_CONCAT(a.name, ', ') AS artists
+FROM songs s
+LEFT JOIN song_artists sa
+    ON s.id = sa.song_id
+LEFT JOIN artists a
+    ON sa.artist_id = a.id
+WHERE
+    s.name LIKE '%' || ?1 || '%'
+    OR a.name LIKE '%' || ?1 || '%'
+GROUP BY s.id
+ORDER BY s.created_at DESC
 LIMIT ?2
 `
 
-type SearchLibraryFilesParams struct {
+type SearchSongsParams struct {
 	Keyword *string `json:"keyword"`
 	Limit   int64   `json:"limit"`
 }
 
-func (q *Queries) SearchLibraryFiles(ctx context.Context, arg SearchLibraryFilesParams) ([]LibraryFile, error) {
-	rows, err := q.db.QueryContext(ctx, searchLibraryFiles, arg.Keyword, arg.Limit)
+type SearchSongsRow struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	Artists string `json:"artists"`
+}
+
+func (q *Queries) SearchSongs(ctx context.Context, arg SearchSongsParams) ([]SearchSongsRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchSongs, arg.Keyword, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []LibraryFile
+	var items []SearchSongsRow
 	for rows.Next() {
-		var i LibraryFile
+		var i SearchSongsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.DownloadID,
 			&i.Name,
+			&i.Path,
 			&i.Artists,
-			&i.FileName,
-			&i.Extension,
-			&i.Size,
-			&i.ModifiedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -557,46 +640,38 @@ func (q *Queries) UpdateDownloadProgress(ctx context.Context, arg UpdateDownload
 	return err
 }
 
-const upsertLibraryFile = `-- name: UpsertLibraryFile :exec
-INSERT INTO library_files (
-  download_id,
-  name, 
-  artists, 
-  file_name, 
-  extension, 
-  size, 
-  modified_at
-)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(download_id) DO UPDATE SET
-  name = excluded.name,
-  artists = excluded.artists,
-  file_name = excluded.file_name,
-  extension = excluded.extension,
-  size = excluded.size,
-  modified_at = excluded.modified_at,
-  updated_at = CURRENT_TIMESTAMP
+const upsertArtist = `-- name: UpsertArtist :one
+INSERT INTO artists (name) 
+VALUES (?) ON CONFLICT(name) DO NOTHING 
+RETURNING id
 `
 
-type UpsertLibraryFileParams struct {
-	DownloadID int64  `json:"download_id"`
-	Name       string `json:"name"`
-	Artists    string `json:"artists"`
-	FileName   string `json:"file_name"`
-	Extension  string `json:"extension"`
-	Size       int64  `json:"size"`
-	ModifiedAt string `json:"modified_at"`
+func (q *Queries) UpsertArtist(ctx context.Context, name string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, upsertArtist, name)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
-func (q *Queries) UpsertLibraryFile(ctx context.Context, arg UpsertLibraryFileParams) error {
-	_, err := q.db.ExecContext(ctx, upsertLibraryFile,
-		arg.DownloadID,
-		arg.Name,
-		arg.Artists,
-		arg.FileName,
-		arg.Extension,
-		arg.Size,
-		arg.ModifiedAt,
-	)
-	return err
+const upsertSong = `-- name: UpsertSong :one
+INSERT INTO songs (path, name, extension)
+VALUES (?, ?, ?)
+ON CONFLICT(path) DO UPDATE SET
+    name = excluded.name,
+    extension = excluded.extension,
+    updated_at = CURRENT_TIMESTAMP
+RETURNING id
+`
+
+type UpsertSongParams struct {
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	Extension string `json:"extension"`
+}
+
+func (q *Queries) UpsertSong(ctx context.Context, arg UpsertSongParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, upsertSong, arg.Path, arg.Name, arg.Extension)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
