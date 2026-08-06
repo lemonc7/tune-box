@@ -18,18 +18,10 @@ type Handler struct {
 }
 
 func (h *Handler) Home(c *echo.Context) error {
-	downloads, err := h.Music.ListDownloads(
-		c.Request().Context(),
-		10,
-	)
-	if err != nil {
-		return err
-	}
-
 	return render(
 		c,
 		http.StatusOK,
-		pages.SearchPage(h.Music.Providers(), downloads),
+		pages.SearchPage(h.Music.Providers()),
 	)
 }
 

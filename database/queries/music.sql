@@ -24,11 +24,11 @@ SELECT * FROM downloads WHERE id = ?;
 
 -- name: GetDownloadJob :one
 SELECT d.id, d.music_id, d.provider, d.track_id, d.quality, d.status,
-       d.progress, d.downloaded_bytes, d.total_bytes, d.attempt,
-       d.resource_url, d.file_name, d.path, d.size, d.content_type,
-       d.error_message, d.created_at, d.started_at, d.finished_at,
-       m.name AS music_name, m.album AS music_album, m.cover_url AS music_cover_url,
-       CAST(COALESCE(GROUP_CONCAT(a.name, ';'), '') AS TEXT) AS music_artists
+      d.progress, d.downloaded_bytes, d.total_bytes, d.attempt,
+      d.resource_url, d.file_name, d.path, d.size, d.content_type,
+      d.error_message, d.created_at, d.started_at, d.finished_at,
+      m.name AS music_name, m.album AS music_album, m.cover_url AS music_cover_url,
+      CAST(COALESCE(GROUP_CONCAT(a.name, ';'), '') AS TEXT) AS music_artists
 FROM downloads d
 JOIN musics m ON m.id = d.music_id
 LEFT JOIN music_artists ma ON ma.music_id = m.id
@@ -139,8 +139,8 @@ DELETE FROM library_files WHERE scan_token <> ?;
 
 -- name: ListLibraryFiles :many
 SELECT lf.id, lf.music_id, lf.path, lf.file_name, lf.extension, lf.size,
-       lf.modified_at, lf.scan_token, lf.created_at, lf.updated_at,
-       m.provider, m.track_id, m.name AS music_name, m.album AS music_album
+      lf.modified_at, lf.scan_token, lf.created_at, lf.updated_at,
+      m.provider, m.track_id, m.name AS music_name, m.album AS music_album
 FROM library_files lf
 LEFT JOIN musics m ON m.id = lf.music_id
 ORDER BY lf.file_name COLLATE NOCASE

@@ -9,17 +9,11 @@ import (
 	"strings"
 )
 
-templ SearchPage(
-	providers []provider.Info,
-	downloads []model.DownloadHistory,
-) {
-	@layout.Layout("TuneGo", SearchContent(providers, downloads))
+templ SearchPage(providers []provider.Info) {
+	@layout.Layout("TuneGo", SearchContent(providers))
 }
 
-templ SearchContent(
-	providers []provider.Info,
-	downloads []model.DownloadHistory,
-) {
+templ SearchContent(providers []provider.Info) {
 	<section>
 		<h1>搜索音乐</h1>
 		<form
@@ -66,10 +60,6 @@ templ SearchContent(
 	</section>
 	<section id="search-results" aria-live="polite">
 		@components.Empty("请输入关键词开始搜索")
-	</section>
-	<section>
-		<h2>最近下载</h2>
-		@DownloadList(downloads, true)
 	</section>
 }
 
