@@ -1,0 +1,66 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/lemonc7/tune-go/repo"
+	"github.com/lemonc7/tune-go/views/components"
+	"github.com/lemonc7/tune-go/views/layout"
+	"path/filepath"
+	"strings"
+)
+
+templ LibraryPage(items []repo.SearchSongsRow, keyword string, count int) {
+	@layout.Layout("本地曲库", LibraryContent(items, keyword, count))
+}
+
+templ LibraryContent(items []repo.SearchSongsRow, keyword string, count int) {
+	<section>
+		<header>
+			<h1>本地曲库</h1>
+			if count > 0 {
+				<span class="song-count">{ fmt.Sprintf("%d 首", count) }</span>
+			}
+		</header>
+		<form class="library-toolbar"
+			hx-get="/web/library"
+			hx-target="#library-results"
+			hx-swap="innerHTML"
+			hx-trigger="input changed delay:300ms from:find input, search"
+		>
+			<input
+				type="search"
+				name="q"
+				placeholder="搜索歌名或艺人..."
+				value={ keyword }
+				autocomplete="off"
+			/>
+		</form>
+		@LibraryResults(items, keyword)
+	</section>
+}
+
+templ LibraryResults(items []repo.SearchSongsRow, keyword string) {
+	<div id="library-results">
+		if len(items) == 0 {
+			if keyword != "" {
+				@components.Empty("没有找到匹配的歌曲")
+			} else {
+				@components.Empty("曲库为空，下载音乐后自动收录")
+			}
+		} else {
+			<div class="library-grid">
+				for _,item := range items {
+					<div class="song-card">
+						<span class="song-name" title={ item.Name }>{ item.Name }</span>
+						if item.Artists != "" {
+							<span class="song-artists">{ item.Artists }</span>
+						}
+						<div class="song-meta">
+							<span class="badge-format">{ strings.TrimPrefix(strings.ToLower(filepath.Ext(item.Path)), ".") }</span>
+						</div>
+					</div>
+				}
+			</div>
+		}
+	</div>
+}

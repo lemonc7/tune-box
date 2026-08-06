@@ -170,6 +170,7 @@ func (a *App) initRouter(service *service.Music) {
 
 	a.echo.GET("/", web.Home)
 	a.echo.GET("/downloads", web.DownloadsPage)
+	a.echo.GET("/library", web.LibraryPage)
 
 	wg := a.echo.Group("/web")
 	wg.GET("/search", web.Search)
@@ -181,6 +182,7 @@ func (a *App) initRouter(service *service.Music) {
 	wg.POST("/downloads/:id/resume", web.ResumeDownload)
 	wg.POST("/downloads/:id/cancel", web.CancelDownload)
 	wg.POST("/downloads/:id/retry", web.RetryDownload)
+	wg.GET("/library", web.Library)
 
 	a.echo.StaticFS("/assets", assets.Assets)
 }

@@ -269,6 +269,24 @@ func (h *Handler) RetryDownload(c *echo.Context) error {
 	return h.DownloadList(c)
 }
 
+func (h *Handler) LibraryPage(c *echo.Context) error {
+	keyword := strings.TrimSpace(c.QueryParam("q"))
+	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, 200)
+	if err != nil {
+		return renderError(c, err)
+	}
+	return render(c, http.StatusOK, pages.LibraryPage(items, keyword, len(items)))
+}
+
+func (h *Handler) Library(c *echo.Context) error {
+	keyword := strings.TrimSpace(c.QueryParam("q"))
+	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, 200)
+	if err != nil {
+		return renderError(c, err)
+	}
+	return render(c, http.StatusOK, pages.LibraryResults(items, keyword))
+}
+
 func downloadID(c *echo.Context) (int64, error) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id < 1 {
