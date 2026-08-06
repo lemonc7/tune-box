@@ -1,19 +1,15 @@
 package components
 
 templ Empty(message string) {
-	<div class="empty">
+	<div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-8 py-12 text-center text-sm text-slate-400">
 		<p>{ message }</p>
 	</div>
 }
 
 templ Notice(message string) {
-	<div class="notice">
-		{ message }
-	</div>
+	<div class="rounded-xl bg-accent-light/70 px-5 py-3.5 text-sm text-accent font-medium">{ message }</div>
 }
 
 templ ErrorNotice(message string) {
-	<div class="notice error">
-		{ message }
-	</div>
+	<div class="rounded-xl bg-red-50 px-5 py-3.5 text-sm text-red-600 font-medium">{ message }</div>
 }

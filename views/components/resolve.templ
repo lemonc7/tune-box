@@ -2,13 +2,12 @@ package components
 
 import (
 	"fmt"
-
 	"github.com/lemonc7/tune-go/model"
 )
 
 templ ResolveButton(track model.Track, quality model.Quality) {
 	<form
-		class="quality-form"
+		class="inline-flex items-center gap-1"
 		hx-post="/web/downloads"
 		hx-target={ "#resolve-" + track.Provider + "-" + track.ID }
 		hx-swap="innerHTML"
@@ -20,40 +19,33 @@ templ ResolveButton(track model.Track, quality model.Quality) {
 		<input type="hidden" name="quality" value={ quality.ID }/>
 		<input type="hidden" name="name" value={ track.Name }/>
 		<input type="hidden" name="album" value={ track.Album }/>
-		<input
-			type="hidden"
-			name="durationMs"
-			value={ fmt.Sprintf("%d", track.DurationMS) }
-		/>
+		<input type="hidden" name="durationMs" value={ fmt.Sprintf("%d", track.DurationMS) }/>
 		<input type="hidden" name="coverUrl" value={ track.CoverURL }/>
 		for _,artist := range track.Artists {
 			<input type="hidden" name="artists" value={ artist }/>
 		}
-		<button type="submit" title={ "下载 " + quality.Label }>
-			<span>下载</span>
-			{ " · " + quality.Label }
-			if quality.Format !=  "" {
+		<button type="submit" title={ "下载 " + quality.Label }
+			class="cursor-pointer rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent-dark transition-colors"
+		>
+			<span>下载</span>{ " · " + quality.Label }
+			if quality.Format != "" {
 				<span>{ " · " + quality.Format }</span>
 			}
 		</button>
-		<span class="htmx-indicator">正在加入...</span>
+		<span class="htmx-indicator hidden text-xs text-accent">加入中...</span>
 	</form>
 }
 
-templ ResolveResource(
-	request model.DownloadRequest,
-	resource model.Resource,
-) {
-	<div class="resolved-resource">
-		<p>
-			已解析:
-			<strong>{ resource.Quality.Label }</strong>
+templ ResolveResource(request model.DownloadRequest, resource model.Resource) {
+	<div class="rounded-xl bg-accent-light/70 p-4 space-y-3">
+		<p class="text-sm">
+			已解析: <strong>{ resource.Quality.Label }</strong>
 			if resource.Quality.Format != "" {
 				<span>{ " / " + resource.Quality.Format }</span>
 			}
 		</p>
 		if resource.ExpiresAt != "" {
-			<p>资源有效期: { resource.ExpiresAt }</p>
+			<p class="text-xs text-slate-500">资源有效期: { resource.ExpiresAt }</p>
 		}
 		<form
 			hx-post="/web/downloads"
@@ -61,37 +53,17 @@ templ ResolveResource(
 			hx-swap="outerHTML"
 			hx-disabled-elt="find button"
 		>
-			<input
-				type="hidden"
-				name="provider"
-				value={ request.Provider }
-			/>
-			<input
-				type="hidden"
-				name="trackId"
-				value={ request.TrackID }
-			/>
-			<input
-				type="hidden"
-				name="quality"
-				value={ request.Quality }
-			/>
+			<input type="hidden" name="provider" value={ request.Provider }/>
+			<input type="hidden" name="trackId" value={ request.TrackID }/>
+			<input type="hidden" name="quality" value={ request.Quality }/>
 			<input type="hidden" name="name" value={ request.Name }/>
 			<input type="hidden" name="album" value={ request.Album }/>
-			<input
-				type="hidden"
-				name="coverUrl"
-				value={ request.CoverURL }
-			/>
-			<input
-				type="hidden"
-				name="durationMs"
-				value={ fmt.Sprintf("%d", request.DurationMS) }
-			/>
+			<input type="hidden" name="coverUrl" value={ request.CoverURL }/>
+			<input type="hidden" name="durationMs" value={ fmt.Sprintf("%d", request.DurationMS) }/>
 			for _,artist := range request.Artists {
 				<input type="hidden" name="artists" value={ artist }/>
 			}
-			<button type="submit">加入下载</button>
+			<button type="submit" class="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-bold text-white hover:bg-accent-dark transition-colors">加入下载</button>
 		</form>
 	</div>
 }

@@ -36,13 +36,13 @@ func Layout(title string, content templ.Component) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/layout/layout.templ`, Line: 12, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/layout/layout.templ`, Line: 9, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/assets/favicon.ico\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/htmx.min.js\"></script></head><body hx-boost=\"true\"><header><nav><a href=\"/\">搜索</a> <a href=\"/downloads\">下载历史</a> <a href=\"/library\">本地曲库</a></nav></header><main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/assets/favicon.ico\"><script src=\"/assets/htmx.min.js\"></script><script src=\"https://cdn.tailwindcss.com\"></script><script>\n\t\t\t\ttailwind.config = {\n\t\t\t\t\ttheme: {\n\t\t\t\t\t\textend: {\n\t\t\t\t\t\t\tcolors: { accent: '#4f46e5', 'accent-light': '#eef2ff', 'accent-dark': '#4338ca' }\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t</script></head><body hx-boost=\"true\" class=\"min-h-screen bg-slate-50 text-slate-800 antialiased\"><header class=\"sticky top-0 z-10 border-b border-slate-200/60 bg-white/80 backdrop-blur-md\"><nav class=\"mx-auto flex max-w-5xl gap-1 px-5 py-3\"><a href=\"/\" class=\"rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-accent-light hover:text-accent transition-colors\">搜索</a> <a href=\"/downloads\" class=\"rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-accent-light hover:text-accent transition-colors\">下载历史</a> <a href=\"/library\" class=\"rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-accent-light hover:text-accent transition-colors\">本地曲库</a></nav></header><main class=\"mx-auto max-w-5xl space-y-5 px-4 py-6 pb-16\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

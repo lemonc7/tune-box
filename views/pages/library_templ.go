@@ -67,19 +67,19 @@ func LibraryContent(items []repo.SearchSongsRow, keyword string, count int) temp
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section><header><h1>本地曲库</h1>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm\"><header class=\"mb-4 flex flex-wrap items-center justify-between gap-3\"><h1 class=\"text-2xl font-bold\">本地曲库</h1>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if count > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<span class=\"song-count\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<span class=\"rounded-full bg-accent-light px-3 py-1 text-sm font-bold text-accent\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d 首", count))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 21, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 21, Col: 117}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -90,7 +90,7 @@ func LibraryContent(items []repo.SearchSongsRow, keyword string, count int) temp
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</header><form class=\"library-toolbar\" hx-get=\"/web/library\" hx-target=\"#library-results\" hx-swap=\"innerHTML\" hx-trigger=\"input changed delay:300ms from:find input, search\"><input type=\"search\" name=\"q\" placeholder=\"搜索歌名或艺人...\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</header><form class=\"mb-4 flex gap-3\" hx-get=\"/web/library\" hx-target=\"#library-results\" hx-swap=\"innerHTML\" hx-trigger=\"input changed delay:300ms from:find input, search\"><input type=\"search\" name=\"q\" placeholder=\"搜索歌名或艺人...\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -103,7 +103,7 @@ func LibraryContent(items []repo.SearchSongsRow, keyword string, count int) temp
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" autocomplete=\"off\"></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" autocomplete=\"off\" class=\"w-full max-w-sm rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm shadow-xs focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/20\"></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -157,19 +157,19 @@ func LibraryResults(items []repo.SearchSongsRow, keyword string) templ.Component
 				}
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"library-grid\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, item := range items {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"song-card\"><span class=\"song-name\" title=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"space-y-2 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-shadow hover:shadow-sm\"><span class=\"block truncate text-sm font-bold text-slate-800\" title=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(item.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 54, Col: 47}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 55, Col: 85}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -182,7 +182,7 @@ func LibraryResults(items []repo.SearchSongsRow, keyword string) templ.Component
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(item.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 54, Col: 61}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 55, Col: 99}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -193,14 +193,14 @@ func LibraryResults(items []repo.SearchSongsRow, keyword string) templ.Component
 					return templ_7745c5c3_Err
 				}
 				if item.Artists != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span class=\"song-artists\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span class=\"block text-xs leading-relaxed text-slate-500\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(item.Artists)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 56, Col: 48}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 57, Col: 80}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -211,14 +211,14 @@ func LibraryResults(items []repo.SearchSongsRow, keyword string) templ.Component
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div class=\"song-meta\"><span class=\"badge-format\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div class=\"flex items-center gap-2 text-xs text-slate-400\"><span class=\"rounded bg-accent-light px-1.5 py-0.5 text-[0.65rem] font-bold uppercase text-accent\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(strings.TrimPrefix(strings.ToLower(filepath.Ext(item.Path)), "."))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 59, Col: 101}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 60, Col: 173}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {

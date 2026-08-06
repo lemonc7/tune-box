@@ -12,8 +12,8 @@ templ DownloadsPage(items []model.DownloadHistory) {
 }
 
 templ DownloadsContent(items []model.DownloadHistory) {
-	<section>
-		<h1>下载历史</h1>
+	<section class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm">
+		<h1 class="mb-4 text-2xl font-bold">下载历史</h1>
 		@DownloadList(items, true)
 	</section>
 }
@@ -30,7 +30,7 @@ templ DownloadList(items []model.DownloadHistory, polling bool) {
 		if len(items) == 0 {
 			@components.Empty("暂无下载记录")
 		} else {
-			<div class="download-list">
+			<div class="space-y-3">
 				for _,item := range items {
 					@DownloadItem(item)
 				}
@@ -40,57 +40,57 @@ templ DownloadList(items []model.DownloadHistory, polling bool) {
 }
 
 templ DownloadItem(item model.DownloadHistory) {
-	<div class="download-card" id={ fmt.Sprintf("download-%d", item.ID) }>
-		<div class="download-info">
-			<div class="download-head">
-				<strong>{ item.Name }</strong>
-				<div class="download-meta">
-					<span class="badge badge-source">{ item.Provider }</span>
-					<span class="badge badge-quality">{ item.Quality }</span>
+	<div class="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-shadow hover:shadow-sm sm:grid-cols-[1fr_auto]" id={ fmt.Sprintf("download-%d", item.ID) }>
+		<div class="min-w-0 space-y-2.5">
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				<strong class="truncate text-base font-semibold">{ item.Name }</strong>
+				<div class="flex flex-wrap items-center gap-1.5 text-xs">
+					<span class="rounded-md bg-accent-light px-2 py-0.5 font-semibold text-accent">{ item.Provider }</span>
+					<span class="rounded-md bg-green-50 px-2 py-0.5 font-semibold text-green-700">{ item.Quality }</span>
 					if item.Size != nil {
-						<span class="download-size">{ formatBytes(*item.Size) }</span>
+						<span class="text-slate-400">{ formatBytes(*item.Size) }</span>
 					}
 				</div>
 			</div>
 			if item.Status == "downloading" || item.Status == "tagging" {
-				<div class="progress-row">
-					<progress class="download-progress" value={ fmt.Sprintf("%d", item.Progress) } max="100"></progress>
-					<span class="progress-pct">{ fmt.Sprintf("%d%%", item.Progress) }</span>
+				<div class="flex items-center gap-3">
+					<progress class="h-2 flex-1 rounded-full accent-accent [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-slate-100 [&::-webkit-progress-value]:rounded-full" value={ fmt.Sprintf("%d", item.Progress) } max="100"></progress>
+					<span class="min-w-[2.8rem] text-right text-sm font-bold text-accent">{ fmt.Sprintf("%d%%", item.Progress) }</span>
 				</div>
 			}
 			if item.Status == "downloading" && item.DownloadedBytes > 0 && item.TotalBytes > 0 {
-				<span class="download-size">{ formatBytes(item.DownloadedBytes) + " / " + formatBytes(item.TotalBytes) }</span>
+				<span class="text-xs text-slate-400">{ formatBytes(item.DownloadedBytes) + " / " + formatBytes(item.TotalBytes) }</span>
 			}
 			if item.ErrorMessage != nil {
-				<p class="error">{ *item.ErrorMessage }</p>
+				<p class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{ *item.ErrorMessage }</p>
 			}
 		</div>
-		<div class="download-actions">
-			<span class={ "status-badge status-" + item.Status }>{ downloadStatusText(item.Status) }</span>
-			<div class="btn-group">
+		<div class="flex flex-row items-center justify-between gap-2 sm:flex-col sm:items-end sm:justify-center">
+			<span class={ statusClass(item.Status) + " rounded-md px-2 py-0.5 text-xs font-bold" }>{ statusText(item.Status) }</span>
+			<div class="flex gap-1">
 				switch item.Status {
 					case "pending","resolving","downloading":
-						<button class="btn-sm"
+						<button class="cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
 							hx-post={ fmt.Sprintf("/web/downloads/%d/pause", item.ID) }
 							hx-target="#download-list" hx-swap="outerHTML"
 						>暂停</button>
-						<button class="btn-sm btn-danger"
+						<button class="cursor-pointer rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
 							hx-post={ fmt.Sprintf("/web/downloads/%d/cancel", item.ID) }
 							hx-target="#download-list" hx-swap="outerHTML"
 							hx-confirm="确定取消？"
 						>取消</button>
 					case "paused":
-						<button class="btn-sm btn-resume"
+						<button class="cursor-pointer rounded-md border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100"
 							hx-post={ fmt.Sprintf("/web/downloads/%d/resume", item.ID) }
 							hx-target="#download-list" hx-swap="outerHTML"
 						>继续</button>
-						<button class="btn-sm btn-danger"
+						<button class="cursor-pointer rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
 							hx-post={ fmt.Sprintf("/web/downloads/%d/cancel", item.ID) }
 							hx-target="#download-list" hx-swap="outerHTML"
 							hx-confirm="确定取消？"
 						>取消</button>
 					case "failed","cancelled":
-						<button class="btn-sm btn-retry"
+						<button class="cursor-pointer rounded-md border border-indigo-200 bg-accent-light px-2.5 py-1.5 text-xs font-semibold text-accent hover:bg-indigo-100"
 							hx-post={ fmt.Sprintf("/web/downloads/%d/retry", item.ID) }
 							hx-target="#download-list" hx-swap="outerHTML"
 						>重试</button>
@@ -100,7 +100,19 @@ templ DownloadItem(item model.DownloadHistory) {
 	</div>
 }
 
-func downloadStatusText(status string) string {
+func statusClass(status string) string {
+	switch status {
+	case "pending","resolving","downloading": return "bg-amber-50 text-amber-700"
+	case "tagging": return "bg-indigo-50 text-indigo-700"
+	case "paused": return "bg-slate-100 text-slate-500"
+	case "completed": return "bg-green-50 text-green-700"
+	case "failed": return "bg-red-50 text-red-700"
+	case "cancelled": return "bg-slate-100 text-slate-400"
+	default: return "bg-slate-100 text-slate-500"
+	}
+}
+
+func statusText(status string) string {
 	switch status {
 	case "pending": return "排队中"
 	case "resolving": return "解析中"
