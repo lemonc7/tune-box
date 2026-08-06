@@ -16,6 +16,11 @@ download:
   max_bytes: 104857600
   max_concurrent: 2
 
+library:
+  # 留空表示关闭定时扫描；启动扫描和 HTTP 手动扫描不受影响。
+  scan_at: "03:00"
+  timezone: Asia/Shanghai
+
 providers:
   kuwo:
     search_url: https://search.kuwo.cn/r.s

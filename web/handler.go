@@ -267,44 +267,6 @@ func (h *Handler) RetryDownload(c *echo.Context) error {
 	return h.DownloadList(c)
 }
 
-func (h *Handler) LibraryPage(c *echo.Context) error {
-	items, err := h.Music.ListLibrary(
-		c.Request().Context(),
-		500,
-	)
-	if err != nil {
-		return err
-	}
-
-	return render(
-		c,
-		http.StatusOK,
-		pages.LibraryPage(items),
-	)
-}
-
-func (h *Handler) ScanLibrary(c *echo.Context) error {
-	if _, err := h.Music.ScanLibrary(
-		c.Request().Context(),
-	); err != nil {
-		return renderError(c, err)
-	}
-
-	items, err := h.Music.ListLibrary(
-		c.Request().Context(),
-		500,
-	)
-	if err != nil {
-		return renderError(c, err)
-	}
-
-	return render(
-		c,
-		http.StatusOK,
-		pages.LibraryList(items),
-	)
-}
-
 func downloadID(c *echo.Context) (int64, error) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id < 1 {

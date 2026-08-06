@@ -10,8 +10,13 @@ import (
 )
 
 const cancelDownload = `-- name: CancelDownload :execrows
-UPDATE downloads SET status = 'cancelled', error_message = ?, finished_at = CURRENT_TIMESTAMP
-WHERE id = ? AND status IN ('pending', 'resolving', 'downloading', 'tagging', 'paused')
+UPDATE downloads
+SET status = 'cancelled', 
+    error_message = ?, 
+    finished_at = CURRENT_TIMESTAMP,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status IN ('pending', 'resolving', 'downloading', 'tagging', 'paused')
 `
 
 type CancelDownloadParams struct {
@@ -29,10 +34,15 @@ func (q *Queries) CancelDownload(ctx context.Context, arg CancelDownloadParams) 
 
 const claimDownload = `-- name: ClaimDownload :one
 UPDATE downloads
-SET status = 'resolving', started_at = CURRENT_TIMESTAMP, finished_at = NULL,
-    error_message = NULL, attempt = attempt + 1
-WHERE id = ? AND status = 'pending'
-RETURNING id, music_id, provider, track_id, quality, status, progress, downloaded_bytes, total_bytes, attempt, resource_url, file_name, path, size, content_type, error_message, created_at, started_at, finished_at
+SET status = 'resolving', 
+    started_at = CURRENT_TIMESTAMP, 
+    finished_at = NULL,
+    error_message = NULL, 
+    attempt = attempt + 1, 
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status = 'pending'
+RETURNING id, provider, track_id, quality, name, artists, album, duration_ms, cover_url, status, progress, downloaded_bytes, total_bytes, attempt, resource_url, file_name, path, size, content_type, error_message, created_at, started_at, finished_at, updated_at
 `
 
 func (q *Queries) ClaimDownload(ctx context.Context, id int64) (Download, error) {
@@ -40,10 +50,14 @@ func (q *Queries) ClaimDownload(ctx context.Context, id int64) (Download, error)
 	var i Download
 	err := row.Scan(
 		&i.ID,
-		&i.MusicID,
 		&i.Provider,
 		&i.TrackID,
 		&i.Quality,
+		&i.Name,
+		&i.Artists,
+		&i.Album,
+		&i.DurationMs,
+		&i.CoverUrl,
 		&i.Status,
 		&i.Progress,
 		&i.DownloadedBytes,
@@ -58,40 +72,55 @@ func (q *Queries) ClaimDownload(ctx context.Context, id int64) (Download, error)
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const createDownload = `-- name: CreateDownload :one
-INSERT INTO downloads (music_id, provider, track_id, quality, file_name)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO downloads (
+  provider, track_id, quality, name, artists, album, duration_ms, cover_url, file_name
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(provider, track_id, quality) DO NOTHING
-RETURNING id, music_id, provider, track_id, quality, status, progress, downloaded_bytes, total_bytes, attempt, resource_url, file_name, path, size, content_type, error_message, created_at, started_at, finished_at
+RETURNING id, provider, track_id, quality, name, artists, album, duration_ms, cover_url, status, progress, downloaded_bytes, total_bytes, attempt, resource_url, file_name, path, size, content_type, error_message, created_at, started_at, finished_at, updated_at
 `
 
 type CreateDownloadParams struct {
-	MusicID  int64   `json:"music_id"`
-	Provider string  `json:"provider"`
-	TrackID  string  `json:"track_id"`
-	Quality  string  `json:"quality"`
-	FileName *string `json:"file_name"`
+	Provider   string  `json:"provider"`
+	TrackID    string  `json:"track_id"`
+	Quality    string  `json:"quality"`
+	Name       string  `json:"name"`
+	Artists    string  `json:"artists"`
+	Album      *string `json:"album"`
+	DurationMs *int64  `json:"duration_ms"`
+	CoverUrl   *string `json:"cover_url"`
+	FileName   *string `json:"file_name"`
 }
 
 func (q *Queries) CreateDownload(ctx context.Context, arg CreateDownloadParams) (Download, error) {
 	row := q.db.QueryRowContext(ctx, createDownload,
-		arg.MusicID,
 		arg.Provider,
 		arg.TrackID,
 		arg.Quality,
+		arg.Name,
+		arg.Artists,
+		arg.Album,
+		arg.DurationMs,
+		arg.CoverUrl,
 		arg.FileName,
 	)
 	var i Download
 	err := row.Scan(
 		&i.ID,
-		&i.MusicID,
 		&i.Provider,
 		&i.TrackID,
 		&i.Quality,
+		&i.Name,
+		&i.Artists,
+		&i.Album,
+		&i.DurationMs,
+		&i.CoverUrl,
 		&i.Status,
 		&i.Progress,
 		&i.DownloadedBytes,
@@ -106,12 +135,15 @@ func (q *Queries) CreateDownload(ctx context.Context, arg CreateDownloadParams) 
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const deleteDownload = `-- name: DeleteDownload :execrows
-DELETE FROM downloads WHERE id = ? AND status NOT IN ('resolving', 'downloading', 'tagging')
+DELETE FROM downloads 
+WHERE id = ? 
+  AND status NOT IN ('resolving', 'downloading', 'tagging')
 `
 
 func (q *Queries) DeleteDownload(ctx context.Context, id int64) (int64, error) {
@@ -120,6 +152,15 @@ func (q *Queries) DeleteDownload(ctx context.Context, id int64) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const deleteLibraryFile = `-- name: DeleteLibraryFile :exec
+DELETE FROM library_files WHERE id = ?
+`
+
+func (q *Queries) DeleteLibraryFile(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteLibraryFile, id)
+	return err
 }
 
 const deleteLibraryFilesNotSeen = `-- name: DeleteLibraryFilesNotSeen :exec
@@ -131,230 +172,29 @@ func (q *Queries) DeleteLibraryFilesNotSeen(ctx context.Context, scanToken strin
 	return err
 }
 
-const getDownload = `-- name: GetDownload :one
-SELECT id, music_id, provider, track_id, quality, status, progress, downloaded_bytes, total_bytes, attempt, resource_url, file_name, path, size, content_type, error_message, created_at, started_at, finished_at FROM downloads WHERE id = ?
+const findLibraryFilesByName = `-- name: FindLibraryFilesByName :many
+SELECT id, file_name, extension, size, modified_at, scan_token, created_at, updated_at FROM library_files
+WHERE file_name LIKE '%' || ?1 || '%'
 `
 
-func (q *Queries) GetDownload(ctx context.Context, id int64) (Download, error) {
-	row := q.db.QueryRowContext(ctx, getDownload, id)
-	var i Download
-	err := row.Scan(
-		&i.ID,
-		&i.MusicID,
-		&i.Provider,
-		&i.TrackID,
-		&i.Quality,
-		&i.Status,
-		&i.Progress,
-		&i.DownloadedBytes,
-		&i.TotalBytes,
-		&i.Attempt,
-		&i.ResourceUrl,
-		&i.FileName,
-		&i.Path,
-		&i.Size,
-		&i.ContentType,
-		&i.ErrorMessage,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.FinishedAt,
-	)
-	return i, err
-}
-
-const getDownloadByKey = `-- name: GetDownloadByKey :one
-SELECT id, music_id, provider, track_id, quality, status, progress, downloaded_bytes, total_bytes, attempt, resource_url, file_name, path, size, content_type, error_message, created_at, started_at, finished_at FROM downloads
-WHERE provider = ? AND track_id = ? AND quality = ?
-`
-
-type GetDownloadByKeyParams struct {
-	Provider string `json:"provider"`
-	TrackID  string `json:"track_id"`
-	Quality  string `json:"quality"`
-}
-
-func (q *Queries) GetDownloadByKey(ctx context.Context, arg GetDownloadByKeyParams) (Download, error) {
-	row := q.db.QueryRowContext(ctx, getDownloadByKey, arg.Provider, arg.TrackID, arg.Quality)
-	var i Download
-	err := row.Scan(
-		&i.ID,
-		&i.MusicID,
-		&i.Provider,
-		&i.TrackID,
-		&i.Quality,
-		&i.Status,
-		&i.Progress,
-		&i.DownloadedBytes,
-		&i.TotalBytes,
-		&i.Attempt,
-		&i.ResourceUrl,
-		&i.FileName,
-		&i.Path,
-		&i.Size,
-		&i.ContentType,
-		&i.ErrorMessage,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.FinishedAt,
-	)
-	return i, err
-}
-
-const getDownloadJob = `-- name: GetDownloadJob :one
-SELECT d.id, d.music_id, d.provider, d.track_id, d.quality, d.status,
-      d.progress, d.downloaded_bytes, d.total_bytes, d.attempt,
-      d.resource_url, d.file_name, d.path, d.size, d.content_type,
-      d.error_message, d.created_at, d.started_at, d.finished_at,
-      m.name AS music_name, m.album AS music_album, m.cover_url AS music_cover_url,
-      CAST(COALESCE(GROUP_CONCAT(a.name, ';'), '') AS TEXT) AS music_artists
-FROM downloads d
-JOIN musics m ON m.id = d.music_id
-LEFT JOIN music_artists ma ON ma.music_id = m.id
-LEFT JOIN artists a ON a.id = ma.artist_id
-WHERE d.id = ?
-GROUP BY d.id
-`
-
-type GetDownloadJobRow struct {
-	ID              int64   `json:"id"`
-	MusicID         int64   `json:"music_id"`
-	Provider        string  `json:"provider"`
-	TrackID         string  `json:"track_id"`
-	Quality         string  `json:"quality"`
-	Status          string  `json:"status"`
-	Progress        int64   `json:"progress"`
-	DownloadedBytes int64   `json:"downloaded_bytes"`
-	TotalBytes      int64   `json:"total_bytes"`
-	Attempt         int64   `json:"attempt"`
-	ResourceUrl     *string `json:"resource_url"`
-	FileName        *string `json:"file_name"`
-	Path            *string `json:"path"`
-	Size            *int64  `json:"size"`
-	ContentType     *string `json:"content_type"`
-	ErrorMessage    *string `json:"error_message"`
-	CreatedAt       string  `json:"created_at"`
-	StartedAt       *string `json:"started_at"`
-	FinishedAt      *string `json:"finished_at"`
-	MusicName       string  `json:"music_name"`
-	MusicAlbum      *string `json:"music_album"`
-	MusicCoverUrl   *string `json:"music_cover_url"`
-	MusicArtists    string  `json:"music_artists"`
-}
-
-func (q *Queries) GetDownloadJob(ctx context.Context, id int64) (GetDownloadJobRow, error) {
-	row := q.db.QueryRowContext(ctx, getDownloadJob, id)
-	var i GetDownloadJobRow
-	err := row.Scan(
-		&i.ID,
-		&i.MusicID,
-		&i.Provider,
-		&i.TrackID,
-		&i.Quality,
-		&i.Status,
-		&i.Progress,
-		&i.DownloadedBytes,
-		&i.TotalBytes,
-		&i.Attempt,
-		&i.ResourceUrl,
-		&i.FileName,
-		&i.Path,
-		&i.Size,
-		&i.ContentType,
-		&i.ErrorMessage,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.FinishedAt,
-		&i.MusicName,
-		&i.MusicAlbum,
-		&i.MusicCoverUrl,
-		&i.MusicArtists,
-	)
-	return i, err
-}
-
-const linkMusicArtist = `-- name: LinkMusicArtist :exec
-INSERT INTO music_artists (music_id, artist_id)
-VALUES (?, ?)
-ON CONFLICT(music_id, artist_id) DO NOTHING
-`
-
-type LinkMusicArtistParams struct {
-	MusicID  int64 `json:"music_id"`
-	ArtistID int64 `json:"artist_id"`
-}
-
-func (q *Queries) LinkMusicArtist(ctx context.Context, arg LinkMusicArtistParams) error {
-	_, err := q.db.ExecContext(ctx, linkMusicArtist, arg.MusicID, arg.ArtistID)
-	return err
-}
-
-const listDownloads = `-- name: ListDownloads :many
-SELECT d.id, d.music_id, d.provider, d.track_id, d.quality, d.status,
-       d.progress, d.downloaded_bytes, d.total_bytes, d.attempt,
-       d.resource_url, d.file_name, d.path, d.size, d.content_type,
-       d.error_message, d.created_at, d.started_at, d.finished_at,
-       m.name AS music_name, m.album AS music_album
-FROM downloads d
-JOIN musics m ON m.id = d.music_id
-ORDER BY d.id DESC
-LIMIT ?
-`
-
-type ListDownloadsRow struct {
-	ID              int64   `json:"id"`
-	MusicID         int64   `json:"music_id"`
-	Provider        string  `json:"provider"`
-	TrackID         string  `json:"track_id"`
-	Quality         string  `json:"quality"`
-	Status          string  `json:"status"`
-	Progress        int64   `json:"progress"`
-	DownloadedBytes int64   `json:"downloaded_bytes"`
-	TotalBytes      int64   `json:"total_bytes"`
-	Attempt         int64   `json:"attempt"`
-	ResourceUrl     *string `json:"resource_url"`
-	FileName        *string `json:"file_name"`
-	Path            *string `json:"path"`
-	Size            *int64  `json:"size"`
-	ContentType     *string `json:"content_type"`
-	ErrorMessage    *string `json:"error_message"`
-	CreatedAt       string  `json:"created_at"`
-	StartedAt       *string `json:"started_at"`
-	FinishedAt      *string `json:"finished_at"`
-	MusicName       string  `json:"music_name"`
-	MusicAlbum      *string `json:"music_album"`
-}
-
-func (q *Queries) ListDownloads(ctx context.Context, limit int64) ([]ListDownloadsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listDownloads, limit)
+func (q *Queries) FindLibraryFilesByName(ctx context.Context, name *string) ([]LibraryFile, error) {
+	rows, err := q.db.QueryContext(ctx, findLibraryFilesByName, name)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListDownloadsRow
+	var items []LibraryFile
 	for rows.Next() {
-		var i ListDownloadsRow
+		var i LibraryFile
 		if err := rows.Scan(
 			&i.ID,
-			&i.MusicID,
-			&i.Provider,
-			&i.TrackID,
-			&i.Quality,
-			&i.Status,
-			&i.Progress,
-			&i.DownloadedBytes,
-			&i.TotalBytes,
-			&i.Attempt,
-			&i.ResourceUrl,
 			&i.FileName,
-			&i.Path,
+			&i.Extension,
 			&i.Size,
-			&i.ContentType,
-			&i.ErrorMessage,
+			&i.ModifiedAt,
+			&i.ScanToken,
 			&i.CreatedAt,
-			&i.StartedAt,
-			&i.FinishedAt,
-			&i.MusicName,
-			&i.MusicAlbum,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -369,57 +209,142 @@ func (q *Queries) ListDownloads(ctx context.Context, limit int64) ([]ListDownloa
 	return items, nil
 }
 
-const listLibraryFiles = `-- name: ListLibraryFiles :many
-SELECT lf.id, lf.music_id, lf.path, lf.file_name, lf.extension, lf.size,
-      lf.modified_at, lf.scan_token, lf.created_at, lf.updated_at,
-      m.provider, m.track_id, m.name AS music_name, m.album AS music_album
-FROM library_files lf
-LEFT JOIN musics m ON m.id = lf.music_id
-ORDER BY lf.file_name COLLATE NOCASE
+const getDownload = `-- name: GetDownload :one
+SELECT id, provider, track_id, quality, name, artists, album, duration_ms, cover_url, status, progress, downloaded_bytes, total_bytes, attempt, resource_url, file_name, path, size, content_type, error_message, created_at, started_at, finished_at, updated_at FROM downloads WHERE id = ?
+`
+
+func (q *Queries) GetDownload(ctx context.Context, id int64) (Download, error) {
+	row := q.db.QueryRowContext(ctx, getDownload, id)
+	var i Download
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.TrackID,
+		&i.Quality,
+		&i.Name,
+		&i.Artists,
+		&i.Album,
+		&i.DurationMs,
+		&i.CoverUrl,
+		&i.Status,
+		&i.Progress,
+		&i.DownloadedBytes,
+		&i.TotalBytes,
+		&i.Attempt,
+		&i.ResourceUrl,
+		&i.FileName,
+		&i.Path,
+		&i.Size,
+		&i.ContentType,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getDownloadByKey = `-- name: GetDownloadByKey :one
+SELECT id, provider, track_id, quality, name, artists, album, duration_ms, cover_url, status, progress, downloaded_bytes, total_bytes, attempt, resource_url, file_name, path, size, content_type, error_message, created_at, started_at, finished_at, updated_at FROM downloads
+WHERE provider = ? 
+  AND track_id = ? 
+  AND quality = ?
+`
+
+type GetDownloadByKeyParams struct {
+	Provider string `json:"provider"`
+	TrackID  string `json:"track_id"`
+	Quality  string `json:"quality"`
+}
+
+func (q *Queries) GetDownloadByKey(ctx context.Context, arg GetDownloadByKeyParams) (Download, error) {
+	row := q.db.QueryRowContext(ctx, getDownloadByKey, arg.Provider, arg.TrackID, arg.Quality)
+	var i Download
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.TrackID,
+		&i.Quality,
+		&i.Name,
+		&i.Artists,
+		&i.Album,
+		&i.DurationMs,
+		&i.CoverUrl,
+		&i.Status,
+		&i.Progress,
+		&i.DownloadedBytes,
+		&i.TotalBytes,
+		&i.Attempt,
+		&i.ResourceUrl,
+		&i.FileName,
+		&i.Path,
+		&i.Size,
+		&i.ContentType,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const libraryFileExists = `-- name: LibraryFileExists :one
+SELECT EXISTS(
+  SELECT 1
+  FROM library_files
+  WHERE file_name = ?
+)
+`
+
+func (q *Queries) LibraryFileExists(ctx context.Context, fileName string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, libraryFileExists, fileName)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const listDownloads = `-- name: ListDownloads :many
+SELECT id, provider, track_id, quality, name, artists, album, duration_ms, cover_url, status, progress, downloaded_bytes, total_bytes, attempt, resource_url, file_name, path, size, content_type, error_message, created_at, started_at, finished_at, updated_at FROM downloads
+ORDER BY id DESC
 LIMIT ?
 `
 
-type ListLibraryFilesRow struct {
-	ID         int64   `json:"id"`
-	MusicID    *int64  `json:"music_id"`
-	Path       string  `json:"path"`
-	FileName   string  `json:"file_name"`
-	Extension  string  `json:"extension"`
-	Size       int64   `json:"size"`
-	ModifiedAt string  `json:"modified_at"`
-	ScanToken  string  `json:"scan_token"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
-	Provider   *string `json:"provider"`
-	TrackID    *string `json:"track_id"`
-	MusicName  *string `json:"music_name"`
-	MusicAlbum *string `json:"music_album"`
-}
-
-func (q *Queries) ListLibraryFiles(ctx context.Context, limit int64) ([]ListLibraryFilesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listLibraryFiles, limit)
+func (q *Queries) ListDownloads(ctx context.Context, limit int64) ([]Download, error) {
+	rows, err := q.db.QueryContext(ctx, listDownloads, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListLibraryFilesRow
+	var items []Download
 	for rows.Next() {
-		var i ListLibraryFilesRow
+		var i Download
 		if err := rows.Scan(
 			&i.ID,
-			&i.MusicID,
-			&i.Path,
-			&i.FileName,
-			&i.Extension,
-			&i.Size,
-			&i.ModifiedAt,
-			&i.ScanToken,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 			&i.Provider,
 			&i.TrackID,
-			&i.MusicName,
-			&i.MusicAlbum,
+			&i.Quality,
+			&i.Name,
+			&i.Artists,
+			&i.Album,
+			&i.DurationMs,
+			&i.CoverUrl,
+			&i.Status,
+			&i.Progress,
+			&i.DownloadedBytes,
+			&i.TotalBytes,
+			&i.Attempt,
+			&i.ResourceUrl,
+			&i.FileName,
+			&i.Path,
+			&i.Size,
+			&i.ContentType,
+			&i.ErrorMessage,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -463,10 +388,19 @@ func (q *Queries) ListPendingDownloadIDs(ctx context.Context) ([]int64, error) {
 
 const markDownloadCompleted = `-- name: MarkDownloadCompleted :execrows
 UPDATE downloads
-SET status = 'completed', file_name = ?, path = ?, size = ?, content_type = ?,
-    progress = 100, downloaded_bytes = ?, total_bytes = ?,
-    error_message = NULL, finished_at = CURRENT_TIMESTAMP
-WHERE id = ? AND status = 'tagging'
+SET status = 'completed', 
+    file_name = ?,
+    path = ?, 
+    size = ?, 
+    content_type = ?,
+    progress = 100, 
+    downloaded_bytes = ?, 
+    total_bytes = ?,
+    error_message = NULL, 
+    finished_at = CURRENT_TIMESTAMP,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status = 'tagging'
 `
 
 type MarkDownloadCompletedParams struct {
@@ -497,8 +431,12 @@ func (q *Queries) MarkDownloadCompleted(ctx context.Context, arg MarkDownloadCom
 
 const markDownloadDownloading = `-- name: MarkDownloadDownloading :execrows
 UPDATE downloads
-SET status = 'downloading', resource_url = ?, finished_at = NULL
-WHERE id = ? AND status = 'resolving'
+SET status = 'downloading', 
+    resource_url = ?, 
+    finished_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status = 'resolving'
 `
 
 type MarkDownloadDownloadingParams struct {
@@ -516,8 +454,12 @@ func (q *Queries) MarkDownloadDownloading(ctx context.Context, arg MarkDownloadD
 
 const markDownloadFailed = `-- name: MarkDownloadFailed :exec
 UPDATE downloads
-SET status = 'failed', error_message = ?, finished_at = CURRENT_TIMESTAMP
-WHERE id = ? AND status NOT IN ('paused', 'cancelled', 'completed')
+SET status = 'failed', 
+    error_message = ?, 
+    finished_at = CURRENT_TIMESTAMP,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status NOT IN ('paused', 'cancelled', 'completed')
 `
 
 type MarkDownloadFailedParams struct {
@@ -531,8 +473,11 @@ func (q *Queries) MarkDownloadFailed(ctx context.Context, arg MarkDownloadFailed
 }
 
 const markDownloadTagging = `-- name: MarkDownloadTagging :execrows
-UPDATE downloads SET status = 'tagging'
-WHERE id = ? AND status = 'downloading'
+UPDATE downloads 
+SET status = 'tagging', 
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status = 'downloading'
 `
 
 func (q *Queries) MarkDownloadTagging(ctx context.Context, id int64) (int64, error) {
@@ -544,8 +489,11 @@ func (q *Queries) MarkDownloadTagging(ctx context.Context, id int64) (int64, err
 }
 
 const pauseDownload = `-- name: PauseDownload :execrows
-UPDATE downloads SET status = 'paused'
-WHERE id = ? AND status IN ('pending', 'resolving', 'downloading')
+UPDATE downloads 
+SET status = 'paused', 
+  updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status IN ('pending', 'resolving', 'downloading')
 `
 
 func (q *Queries) PauseDownload(ctx context.Context, id int64) (int64, error) {
@@ -556,9 +504,38 @@ func (q *Queries) PauseDownload(ctx context.Context, id int64) (int64, error) {
 	return result.RowsAffected()
 }
 
+const requeueMissingDownload = `-- name: RequeueMissingDownload :execrows
+UPDATE downloads
+SET status = 'pending', 
+    progress = 0, 
+    downloaded_bytes = 0, 
+    total_bytes = 0,
+    resource_url = NULL, 
+    path = NULL, 
+    size = NULL, 
+    content_type = NULL,
+    error_message = NULL, 
+    started_at = NULL, 
+    finished_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status = 'completed'
+`
+
+func (q *Queries) RequeueMissingDownload(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, requeueMissingDownload, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const resetInterruptedDownloads = `-- name: ResetInterruptedDownloads :exec
 UPDATE downloads
-SET status = 'pending', error_message = ?, finished_at = NULL
+SET status = 'pending', 
+    error_message = ?, 
+    finished_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
 WHERE status IN ('resolving', 'downloading', 'tagging')
 `
 
@@ -568,8 +545,13 @@ func (q *Queries) ResetInterruptedDownloads(ctx context.Context, errorMessage *s
 }
 
 const resumeDownload = `-- name: ResumeDownload :execrows
-UPDATE downloads SET status = 'pending', error_message = NULL, finished_at = NULL
-WHERE id = ? AND status = 'paused'
+UPDATE downloads
+SET status = 'pending', 
+    error_message = NULL, 
+    finished_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status = 'paused'
 `
 
 func (q *Queries) ResumeDownload(ctx context.Context, id int64) (int64, error) {
@@ -582,9 +564,14 @@ func (q *Queries) ResumeDownload(ctx context.Context, id int64) (int64, error) {
 
 const retryDownload = `-- name: RetryDownload :execrows
 UPDATE downloads
-SET status = 'pending', resource_url = NULL, error_message = NULL,
-    started_at = NULL, finished_at = NULL
-WHERE id = ? AND status IN ('failed', 'cancelled')
+SET status = 'pending', 
+    resource_url = NULL, 
+    error_message = NULL,
+    started_at = NULL, 
+    finished_at = NULL, 
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status IN ('failed', 'cancelled')
 `
 
 func (q *Queries) RetryDownload(ctx context.Context, id int64) (int64, error) {
@@ -597,8 +584,12 @@ func (q *Queries) RetryDownload(ctx context.Context, id int64) (int64, error) {
 
 const updateDownloadProgress = `-- name: UpdateDownloadProgress :exec
 UPDATE downloads
-SET progress = ?, downloaded_bytes = ?, total_bytes = ?
-WHERE id = ? AND status = 'downloading'
+SET progress = ?, 
+    downloaded_bytes = ?, 
+    total_bytes = ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? 
+  AND status = 'downloading'
 `
 
 type UpdateDownloadProgressParams struct {
@@ -618,38 +609,21 @@ func (q *Queries) UpdateDownloadProgress(ctx context.Context, arg UpdateDownload
 	return err
 }
 
-const upsertArtist = `-- name: UpsertArtist :one
-INSERT INTO artists (name)
-VALUES (?)
-ON CONFLICT(name) DO UPDATE SET name = excluded.name
-RETURNING id, name
-`
-
-func (q *Queries) UpsertArtist(ctx context.Context, name string) (Artist, error) {
-	row := q.db.QueryRowContext(ctx, upsertArtist, name)
-	var i Artist
-	err := row.Scan(&i.ID, &i.Name)
-	return i, err
-}
-
 const upsertLibraryFile = `-- name: UpsertLibraryFile :exec
 INSERT INTO library_files (
-  music_id, path, file_name, extension, size, modified_at, scan_token
+  file_name,
+  extension,
+  size, 
+  modified_at, 
+  scan_token
 )
-VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(path) DO UPDATE SET
-  music_id = COALESCE(excluded.music_id, library_files.music_id),
-  file_name = excluded.file_name,
-  extension = excluded.extension,
-  size = excluded.size,
-  modified_at = excluded.modified_at,
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(file_name) DO UPDATE SET
   scan_token = excluded.scan_token,
   updated_at = CURRENT_TIMESTAMP
 `
 
 type UpsertLibraryFileParams struct {
-	MusicID    *int64 `json:"music_id"`
-	Path       string `json:"path"`
 	FileName   string `json:"file_name"`
 	Extension  string `json:"extension"`
 	Size       int64  `json:"size"`
@@ -659,8 +633,6 @@ type UpsertLibraryFileParams struct {
 
 func (q *Queries) UpsertLibraryFile(ctx context.Context, arg UpsertLibraryFileParams) error {
 	_, err := q.db.ExecContext(ctx, upsertLibraryFile,
-		arg.MusicID,
-		arg.Path,
 		arg.FileName,
 		arg.Extension,
 		arg.Size,
@@ -668,49 +640,4 @@ func (q *Queries) UpsertLibraryFile(ctx context.Context, arg UpsertLibraryFilePa
 		arg.ScanToken,
 	)
 	return err
-}
-
-const upsertMusic = `-- name: UpsertMusic :one
-INSERT INTO musics (provider, track_id, name, album, duration_ms, cover_url)
-VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT(provider, track_id) DO UPDATE SET
-  name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE musics.name END,
-  album = COALESCE(excluded.album, musics.album),
-  duration_ms = COALESCE(excluded.duration_ms, musics.duration_ms),
-  cover_url = COALESCE(excluded.cover_url, musics.cover_url),
-  updated_at = CURRENT_TIMESTAMP
-RETURNING id, provider, track_id, name, album, duration_ms, cover_url, created_at, updated_at
-`
-
-type UpsertMusicParams struct {
-	Provider   string  `json:"provider"`
-	TrackID    string  `json:"track_id"`
-	Name       string  `json:"name"`
-	Album      *string `json:"album"`
-	DurationMs *int64  `json:"duration_ms"`
-	CoverUrl   *string `json:"cover_url"`
-}
-
-func (q *Queries) UpsertMusic(ctx context.Context, arg UpsertMusicParams) (Music, error) {
-	row := q.db.QueryRowContext(ctx, upsertMusic,
-		arg.Provider,
-		arg.TrackID,
-		arg.Name,
-		arg.Album,
-		arg.DurationMs,
-		arg.CoverUrl,
-	)
-	var i Music
-	err := row.Scan(
-		&i.ID,
-		&i.Provider,
-		&i.TrackID,
-		&i.Name,
-		&i.Album,
-		&i.DurationMs,
-		&i.CoverUrl,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
 }

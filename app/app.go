@@ -35,6 +35,11 @@ type App struct {
 
 // New 创建应用并完成中间件、音乐源、数据库、下载器和路由的组装。
 func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
+	scanAt, scanLocation, scanScheduled, err := cfg.Library.ScanSchedule()
+	if err != nil {
+		return nil, fmt.Errorf("configure music library scan: %w", err)
+	}
+
 	e := echo.New()
 	e.Validator = &model.Validator{V: validator.New()}
 
@@ -121,6 +126,13 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		store.Close()
 		return nil, fmt.Errorf("start download queue: %w", err)
 	}
+	if scanScheduled {
+		if err := musicService.StartLibrarySchedule(scanAt, scanLocation); err != nil {
+			musicService.Close()
+			store.Close()
+			return nil, fmt.Errorf("start music library scan schedule: %w", err)
+		}
+	}
 
 	app := &App{
 		echo:   e,
@@ -170,13 +182,11 @@ func (a *App) initRouter(service *service.Music) {
 	api.POST("/downloads/:id/cancel", resource.CancelDownload)
 	api.POST("/downloads/:id/retry", resource.RetryDownload)
 	api.DELETE("/downloads/:id", resource.DeleteDownload)
-	api.GET("/library", resource.Library)
 	api.POST("/library/scan", resource.ScanLibrary)
 
 	// 完整页面
 	a.echo.GET("/", web.Home)
 	a.echo.GET("/downloads", web.DownloadsPage)
-	a.echo.GET("/library", web.LibraryPage)
 
 	wg := a.echo.Group("/web")
 	wg.GET("/search", web.Search)
@@ -188,7 +198,6 @@ func (a *App) initRouter(service *service.Music) {
 	wg.POST("/downloads/:id/resume", web.ResumeDownload)
 	wg.POST("/downloads/:id/cancel", web.CancelDownload)
 	wg.POST("/downloads/:id/retry", web.RetryDownload)
-	wg.POST("/library/scan", web.ScanLibrary)
 
 	a.echo.StaticFS("/assets", assets.Assets)
 }

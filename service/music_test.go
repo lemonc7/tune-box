@@ -139,6 +139,38 @@ func TestDownloadQueueConcurrencyAndDuplicate(t *testing.T) {
 	if atomic.LoadInt64(&maximum) != 2 {
 		t.Fatalf("maximum concurrency = %d, want 2", maximum)
 	}
+
+	existing, err := music.Download(context.Background(), model.DownloadRequest{
+		ResolveRequest: model.ResolveRequest{Provider: "test", TrackID: "1", Quality: "flac"}, Name: "song-1",
+	})
+	if err != nil || !existing.Duplicate || existing.Status != "completed" || existing.DownloadID != first.DownloadID {
+		t.Fatalf("existing library download = %#v, err = %v", existing, err)
+	}
+
+	if err := os.Remove(filepath.Join(downloadDir, "song-1.flac")); err != nil {
+		t.Fatal(err)
+	}
+	requeued, err := music.Download(context.Background(), model.DownloadRequest{
+		ResolveRequest: model.ResolveRequest{Provider: "test", TrackID: "1", Quality: "flac"}, Name: "song-1",
+	})
+	if err != nil || requeued.Duplicate || requeued.Status != "pending" || requeued.DownloadID != first.DownloadID {
+		t.Fatalf("missing library download = %#v, err = %v", requeued, err)
+	}
+
+	deadline = time.Now().Add(3 * time.Second)
+	for {
+		row, err := store.GetDownload(context.Background(), first.DownloadID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.Status == "completed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("missing file was not downloaded again: %#v", row)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	content, err := os.ReadFile(filepath.Join(downloadDir, "song-1.flac"))
 	if err != nil {
 		t.Fatal(err)

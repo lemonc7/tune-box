@@ -13,26 +13,25 @@ type Querier interface {
 	ClaimDownload(ctx context.Context, id int64) (Download, error)
 	CreateDownload(ctx context.Context, arg CreateDownloadParams) (Download, error)
 	DeleteDownload(ctx context.Context, id int64) (int64, error)
+	DeleteLibraryFile(ctx context.Context, id int64) error
 	DeleteLibraryFilesNotSeen(ctx context.Context, scanToken string) error
+	FindLibraryFilesByName(ctx context.Context, name *string) ([]LibraryFile, error)
 	GetDownload(ctx context.Context, id int64) (Download, error)
 	GetDownloadByKey(ctx context.Context, arg GetDownloadByKeyParams) (Download, error)
-	GetDownloadJob(ctx context.Context, id int64) (GetDownloadJobRow, error)
-	LinkMusicArtist(ctx context.Context, arg LinkMusicArtistParams) error
-	ListDownloads(ctx context.Context, limit int64) ([]ListDownloadsRow, error)
-	ListLibraryFiles(ctx context.Context, limit int64) ([]ListLibraryFilesRow, error)
+	LibraryFileExists(ctx context.Context, fileName string) (int64, error)
+	ListDownloads(ctx context.Context, limit int64) ([]Download, error)
 	ListPendingDownloadIDs(ctx context.Context) ([]int64, error)
 	MarkDownloadCompleted(ctx context.Context, arg MarkDownloadCompletedParams) (int64, error)
 	MarkDownloadDownloading(ctx context.Context, arg MarkDownloadDownloadingParams) (int64, error)
 	MarkDownloadFailed(ctx context.Context, arg MarkDownloadFailedParams) error
 	MarkDownloadTagging(ctx context.Context, id int64) (int64, error)
 	PauseDownload(ctx context.Context, id int64) (int64, error)
+	RequeueMissingDownload(ctx context.Context, id int64) (int64, error)
 	ResetInterruptedDownloads(ctx context.Context, errorMessage *string) error
 	ResumeDownload(ctx context.Context, id int64) (int64, error)
 	RetryDownload(ctx context.Context, id int64) (int64, error)
 	UpdateDownloadProgress(ctx context.Context, arg UpdateDownloadProgressParams) error
-	UpsertArtist(ctx context.Context, name string) (Artist, error)
 	UpsertLibraryFile(ctx context.Context, arg UpsertLibraryFileParams) error
-	UpsertMusic(ctx context.Context, arg UpsertMusicParams) (Music, error)
 }
 
 var _ Querier = (*Queries)(nil)

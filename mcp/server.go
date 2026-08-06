@@ -103,7 +103,6 @@ func (s *Server) registerTools() {
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "cancel_download", Description: "取消下载任务并删除断点。"}, s.cancelDownload)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "retry_download", Description: "重试失败或已取消的下载任务。"}, s.retryDownload)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "delete_download", Description: "删除下载任务记录，不删除已完成的音乐文件。"}, s.deleteDownload)
-	protocol.AddTool(s.mcp, &protocol.Tool{Name: "list_library", Description: "查询下载目录中已被 Tune Go 管理的音频文件。"}, s.listLibrary)
 }
 
 func (s *Server) listProviders(context.Context, *protocol.CallToolRequest, emptyInput) (*protocol.CallToolResult, providersOutput, error) {
@@ -189,18 +188,6 @@ func (s *Server) retryDownload(ctx context.Context, _ *protocol.CallToolRequest,
 func (s *Server) deleteDownload(ctx context.Context, _ *protocol.CallToolRequest, input taskInput) (*protocol.CallToolResult, taskOutput, error) {
 	err := s.music.DeleteDownload(ctx, input.DownloadID)
 	return nil, taskOutput{Result: model.DownloadTaskResult{DownloadID: input.DownloadID, Status: "deleted"}}, err
-}
-
-func (s *Server) listLibrary(ctx context.Context, _ *protocol.CallToolRequest, input listInput) (*protocol.CallToolResult, libraryOutput, error) {
-	limit, err := normalizeListLimit(input.Limit)
-	if err != nil {
-		return nil, libraryOutput{}, err
-	}
-	rows, err := s.music.ListLibrary(ctx, int64(limit))
-	if err != nil {
-		return nil, libraryOutput{}, err
-	}
-	return nil, libraryOutput{Files: rows}, nil
 }
 
 func normalizeListLimit(limit int) (int, error) {

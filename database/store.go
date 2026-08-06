@@ -3,7 +3,9 @@ package database
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/lemonc7/tune-go/repo"
 )
@@ -29,8 +31,7 @@ type CreateDownloadParams struct {
 
 // LibraryFileParams 描述一次目录扫描发现的音频文件。
 type LibraryFileParams struct {
-	MusicID   *int64
-	Path      string
+	ID        int64
 	FileName  string
 	Extension string
 	Size      int64
@@ -42,54 +43,31 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// CreateDownload 在一个事务中保存歌曲并创建任务。同一平台、歌曲和音质只保留一条任务。
+// CreateDownload 创建任务并直接保存歌曲元数据。同一平台、歌曲和音质只保留一条任务。
 func (s *Store) CreateDownload(ctx context.Context, input CreateDownloadParams) (repo.Download, bool, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	artists, err := json.Marshal(input.Artists)
 	if err != nil {
-		return repo.Download{}, false, err
+		return repo.Download{}, false, fmt.Errorf("encode artists: %w", err)
 	}
-	defer tx.Rollback()
-	q := s.queries.WithTx(tx)
-	// 歌曲、歌手关系和下载记录必须在同一个事务中写入。
-	music, err := q.UpsertMusic(ctx, repo.UpsertMusicParams{
-		Provider: input.Provider,
-		TrackID:  input.TrackID,
-		Name:     input.Name, Album: optionalString(input.Album),
-		DurationMs: optionalInt64(input.DurationMS), CoverUrl: optionalString(input.CoverURL),
-	})
-	if err != nil {
-		return repo.Download{}, false, err
-	}
-	for _, artistName := range input.Artists {
-		if artistName == "" {
-			continue
-		}
-		artist, err := q.UpsertArtist(ctx, artistName)
-		if err != nil {
-			return repo.Download{}, false, err
-		}
-		if err := q.LinkMusicArtist(ctx, repo.LinkMusicArtistParams{MusicID: music.ID, ArtistID: artist.ID}); err != nil {
-			return repo.Download{}, false, err
-		}
-	}
-	row, err := q.CreateDownload(ctx, repo.CreateDownloadParams{
-		MusicID:  music.ID,
-		Provider: input.Provider,
-		TrackID:  input.TrackID,
-		Quality:  input.Quality,
-		FileName: optionalString(input.FileName),
+	row, err := s.queries.CreateDownload(ctx, repo.CreateDownloadParams{
+		Provider:   input.Provider,
+		TrackID:    input.TrackID,
+		Quality:    input.Quality,
+		Name:       input.Name,
+		Artists:    string(artists),
+		Album:      optionalString(input.Album),
+		DurationMs: optionalInt64(input.DurationMS),
+		CoverUrl:   optionalString(input.CoverURL),
+		FileName:   optionalString(input.FileName),
 	})
 	created := true
 	if errors.Is(err, sql.ErrNoRows) {
 		created = false
-		row, err = q.GetDownloadByKey(ctx, repo.GetDownloadByKeyParams{
+		row, err = s.queries.GetDownloadByKey(ctx, repo.GetDownloadByKeyParams{
 			Provider: input.Provider, TrackID: input.TrackID, Quality: input.Quality,
 		})
 	}
 	if err != nil {
-		return repo.Download{}, false, err
-	}
-	if err := tx.Commit(); err != nil {
 		return repo.Download{}, false, err
 	}
 	return row, created, nil
@@ -113,10 +91,6 @@ func (s *Store) GetDownload(ctx context.Context, id int64) (repo.Download, error
 	return s.queries.GetDownload(ctx, id)
 }
 
-func (s *Store) GetDownloadJob(ctx context.Context, id int64) (repo.GetDownloadJobRow, error) {
-	return s.queries.GetDownloadJob(ctx, id)
-}
-
 // MarkDownloadDownloading 保存临时资源地址并将状态更新为正在下载。
 func (s *Store) MarkDownloadDownloading(ctx context.Context, id int64, resourceURL string) (bool, error) {
 	rows, err := s.queries.MarkDownloadDownloading(ctx, repo.MarkDownloadDownloadingParams{
@@ -131,6 +105,12 @@ func (s *Store) MarkDownloadCompleted(ctx context.Context, id int64, fileName, p
 		ID: id, FileName: optionalString(fileName), Path: optionalString(path),
 		Size: &size, ContentType: optionalString(contentType), DownloadedBytes: size, TotalBytes: size,
 	})
+	return rows > 0, err
+}
+
+// RequeueMissingDownload 让下载结果已丢失的完成任务重新进入队列。
+func (s *Store) RequeueMissingDownload(ctx context.Context, id int64) (bool, error) {
+	rows, err := s.queries.RequeueMissingDownload(ctx, id)
 	return rows > 0, err
 }
 
@@ -186,13 +166,8 @@ func (s *Store) DeleteDownload(ctx context.Context, id int64) (bool, error) {
 }
 
 // ListDownloads 按创建顺序倒序返回下载历史。
-func (s *Store) ListDownloads(ctx context.Context, limit int64) ([]repo.ListDownloadsRow, error) {
+func (s *Store) ListDownloads(ctx context.Context, limit int64) ([]repo.Download, error) {
 	return s.queries.ListDownloads(ctx, limit)
-}
-
-// ListLibraryFiles 返回当前下载目录中的文件记录。
-func (s *Store) ListLibraryFiles(ctx context.Context, limit int64) ([]repo.ListLibraryFilesRow, error) {
-	return s.queries.ListLibraryFiles(ctx, limit)
 }
 
 // SyncLibrary 使用一次扫描结果更新文件表，并清理已经不存在的记录。
@@ -205,27 +180,47 @@ func (s *Store) SyncLibrary(ctx context.Context, scanToken string, files []Libra
 	q := s.queries.WithTx(tx)
 	for _, file := range files {
 		if err := q.UpsertLibraryFile(ctx, repo.UpsertLibraryFileParams{
-			MusicID: file.MusicID, Path: file.Path, FileName: file.FileName,
-			Extension: file.Extension, Size: file.Size, ModifiedAt: file.Modified,
-			ScanToken: scanToken,
+			FileName:   file.FileName,
+			Extension:  file.Extension,
+			Size:       file.Size,
+			ModifiedAt: file.Modified,
+			ScanToken:  scanToken,
 		}); err != nil {
 			return err
 		}
 	}
+
 	if err := q.DeleteLibraryFilesNotSeen(ctx, scanToken); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// UpsertDownloadedFile 在下载完成后立即登记落盘文件。
-func (s *Store) UpsertDownloadedFile(ctx context.Context, musicID int64, scanToken string, file LibraryFileParams) error {
-	file.MusicID = &musicID
+func (s *Store) IsLibraryFileExist(ctx context.Context, name string) (bool, error) {
+	rows, err := s.queries.LibraryFileExists(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	return rows == 1, nil
+}
+
+func (s *Store) FindLibraryFileByName(ctx context.Context, name string) ([]repo.LibraryFile, error) {
+	return s.queries.FindLibraryFilesByName(ctx, &name)
+}
+
+// UpsertDownloadedFile 在下载完成后立即登记落盘文件并关联下载记录。
+func (s *Store) UpsertDownloadedFile(ctx context.Context, download repo.Download, scanToken string, file LibraryFileParams) error {
 	return s.queries.UpsertLibraryFile(ctx, repo.UpsertLibraryFileParams{
-		MusicID: file.MusicID, Path: file.Path, FileName: file.FileName,
-		Extension: file.Extension, Size: file.Size, ModifiedAt: file.Modified,
-		ScanToken: scanToken,
+		FileName:   file.FileName,
+		Extension:  file.Extension,
+		Size:       file.Size,
+		ModifiedAt: file.Modified,
+		ScanToken:  scanToken,
 	})
+}
+
+func (s *Store) DeleteLibraryFile(ctx context.Context, id int64) error {
+	return s.queries.DeleteLibraryFile(ctx, id)
 }
 
 func optionalString(value string) *string {

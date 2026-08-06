@@ -47,8 +47,8 @@ templ LibraryList(items []model.LibraryFile) {
 					for _,item := range items {
 						<tr>
 							<td>
-								if item.MusicName != nil {
-									{ *item.MusicName }
+								if item.Name != nil {
+									{ *item.Name }
 								} else {
 									{ item.FileName }
 								}

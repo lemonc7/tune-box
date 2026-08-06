@@ -4,17 +4,16 @@
 
 package repo
 
-type Artist struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-}
-
 type Download struct {
 	ID              int64   `json:"id"`
-	MusicID         int64   `json:"music_id"`
 	Provider        string  `json:"provider"`
 	TrackID         string  `json:"track_id"`
 	Quality         string  `json:"quality"`
+	Name            string  `json:"name"`
+	Artists         string  `json:"artists"`
+	Album           *string `json:"album"`
+	DurationMs      *int64  `json:"duration_ms"`
+	CoverUrl        *string `json:"cover_url"`
 	Status          string  `json:"status"`
 	Progress        int64   `json:"progress"`
 	DownloadedBytes int64   `json:"downloaded_bytes"`
@@ -29,12 +28,11 @@ type Download struct {
 	CreatedAt       string  `json:"created_at"`
 	StartedAt       *string `json:"started_at"`
 	FinishedAt      *string `json:"finished_at"`
+	UpdatedAt       string  `json:"updated_at"`
 }
 
 type LibraryFile struct {
 	ID         int64  `json:"id"`
-	MusicID    *int64 `json:"music_id"`
-	Path       string `json:"path"`
 	FileName   string `json:"file_name"`
 	Extension  string `json:"extension"`
 	Size       int64  `json:"size"`
@@ -42,21 +40,4 @@ type LibraryFile struct {
 	ScanToken  string `json:"scan_token"`
 	CreatedAt  string `json:"created_at"`
 	UpdatedAt  string `json:"updated_at"`
-}
-
-type Music struct {
-	ID         int64   `json:"id"`
-	Provider   string  `json:"provider"`
-	TrackID    string  `json:"track_id"`
-	Name       string  `json:"name"`
-	Album      *string `json:"album"`
-	DurationMs *int64  `json:"duration_ms"`
-	CoverUrl   *string `json:"cover_url"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
-}
-
-type MusicArtist struct {
-	MusicID  int64 `json:"music_id"`
-	ArtistID int64 `json:"artist_id"`
 }

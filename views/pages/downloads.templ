@@ -42,7 +42,7 @@ templ DownloadItem(item model.DownloadHistory) {
 		id={ fmt.Sprintf("download-%d", item.ID) }
 	>
 		<header>
-			<strong>{ item.MusicName }</strong>
+			<strong>{ item.Name }</strong>
 			<span>{ item.Provider+ "/" + item.Quality }</span>
 		</header>
 		<progress value={ fmt.Sprintf("%d", item.Progress) } max="100"></progress>

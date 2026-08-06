@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -17,6 +18,7 @@ import (
 	"github.com/lemonc7/tune-go/download"
 	"github.com/lemonc7/tune-go/model"
 	"github.com/lemonc7/tune-go/provider"
+	"github.com/lemonc7/tune-go/repo"
 	"github.com/lemonc7/tune-go/tag"
 )
 
@@ -37,6 +39,7 @@ type Music struct {
 	wait        sync.WaitGroup               // 等待所有worker安全退出
 	runningMu   sync.Mutex                   // 保护running map
 	running     map[int64]context.CancelFunc // 保存只在执行任务的取消函数
+	libraryMu   sync.Mutex                   // 串行化完整扫描和下载完成后的曲库登记
 }
 
 // NewMusic 创建供 REST 和 MCP 共用的音乐业务服务。
@@ -79,6 +82,42 @@ func (s *Music) Start(ctx context.Context) error {
 	for _, id := range ids {
 		s.queue <- id
 	}
+	return nil
+}
+
+// StartLibrarySchedule 启动每天指定时间执行一次的曲库扫描。
+func (s *Music) StartLibrarySchedule(scanAt time.Duration, location *time.Location) error {
+	if s.ctx == nil {
+		return errors.New("music service is not started")
+	}
+	if scanAt < 0 || scanAt >= 24*time.Hour {
+		return errors.New("library scan time must be within one day")
+	}
+	if location == nil {
+		location = time.Local
+	}
+
+	s.wait.Go(func() {
+		for {
+			next := nextDailyRun(time.Now(), scanAt, location)
+			s.logger.Info("music library scan scheduled", "next", next.Format(time.RFC3339))
+			timer := time.NewTimer(time.Until(next))
+			select {
+			case <-s.ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+				count, err := s.ScanLibrary(s.ctx)
+				if err != nil {
+					if !errors.Is(err, context.Canceled) {
+						s.logger.Error("scheduled music library scan", "error", err)
+					}
+					continue
+				}
+				s.logger.Info("scheduled music library scan completed", "files", count)
+			}
+		}
+	})
 	return nil
 }
 
@@ -127,6 +166,7 @@ func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.
 	if name == "" {
 		name = req.Provider + "-" + req.TrackID
 	}
+
 	row, created, err := s.store.CreateDownload(ctx, database.CreateDownloadParams{
 		Provider:   req.Provider,
 		TrackID:    req.TrackID,
@@ -141,16 +181,35 @@ func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.
 	if err != nil {
 		return model.DownloadTaskResult{}, fmt.Errorf("create download task: %w", err)
 	}
+
+	// 完成记录对应的文件已经丢失时复用原任务重新下载。
+	if !created && row.Status == "completed" {
+		requeued, err := s.store.RequeueMissingDownload(ctx, row.ID)
+		if err != nil {
+			return model.DownloadTaskResult{}, fmt.Errorf("requeue missing download: %w", err)
+		}
+		if requeued {
+			row.Status = "pending"
+			created = true
+		}
+	}
 	if created {
-		select {
-		case s.queue <- row.ID:
-		case <-ctx.Done():
-			return model.DownloadTaskResult{}, ctx.Err()
-		case <-s.ctx.Done():
-			return model.DownloadTaskResult{}, errors.New("download service is stopped")
+		if err := s.enqueue(ctx, row.ID); err != nil {
+			return model.DownloadTaskResult{}, err
 		}
 	}
 	return model.DownloadTaskResult{DownloadID: row.ID, Status: row.Status, Duplicate: !created}, nil
+}
+
+func (s *Music) enqueue(ctx context.Context, id int64) error {
+	select {
+	case s.queue <- id:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.ctx.Done():
+		return errors.New("download service is stopped")
+	}
 }
 
 func (s *Music) worker() {
@@ -184,11 +243,6 @@ func (s *Music) runDownload(id int64) {
 		s.runningMu.Unlock()
 	}()
 
-	job, err := s.store.GetDownloadJob(taskCtx, id)
-	if err != nil {
-		s.failDownload(id, err)
-		return
-	}
 	resource, err := s.Resolve(taskCtx, model.ResolveRequest{Provider: row.Provider, TrackID: row.TrackID, Quality: row.Quality})
 	if err != nil {
 		if s.ctx.Err() == nil {
@@ -206,13 +260,13 @@ func (s *Music) runDownload(id int64) {
 	if !downloading {
 		return
 	}
-	fileName := job.MusicName
-	if job.FileName != nil && *job.FileName != "" {
-		fileName = *job.FileName
+	fileName := row.Name
+	if row.FileName != nil && *row.FileName != "" {
+		fileName = *row.FileName
 	}
 	lastUpdate := time.Time{}
 	result, err := s.downloader.Download(taskCtx, resource, download.Options{
-		TaskID: id, FileName: fileName, ExpectedBytes: job.TotalBytes,
+		TaskID: id, FileName: fileName, ExpectedBytes: row.TotalBytes,
 		Progress: func(downloaded, total int64) {
 			if time.Since(lastUpdate) < 300*time.Millisecond && (total == 0 || downloaded < total) {
 				return
@@ -239,26 +293,26 @@ func (s *Music) runDownload(id int64) {
 			if resource.Quality.Format != "flac" {
 				return nil
 			}
-			metadata := model.MusicMetadata{Name: job.MusicName}
-			if job.MusicAlbum != nil {
-				metadata.Album = *job.MusicAlbum
+			metadata := model.MusicMetadata{Name: row.Name}
+			if row.Album != nil {
+				metadata.Album = *row.Album
 			}
-			if job.MusicCoverUrl != nil {
-				metadata.CoverURL = *job.MusicCoverUrl
+			if row.CoverUrl != nil {
+				metadata.CoverURL = *row.CoverUrl
 			}
-			if job.MusicArtists != "" {
-				metadata.Artists = strings.Split(job.MusicArtists, ";")
+			if err := json.Unmarshal([]byte(row.Artists), &metadata.Artists); err != nil {
+				return fmt.Errorf("decode download artists: %w", err)
 			}
-			item, err := s.registry.Get(job.Provider)
+			item, err := s.registry.Get(row.Provider)
 			if err != nil {
 				return err
 			}
-			providerMetadata, metadataErr := item.Metadata(ctx, job.TrackID)
+			providerMetadata, metadataErr := item.Metadata(ctx, row.TrackID)
 			if metadataErr != nil {
 				// 元数据接口短暂缺少某一项时仍写入已经取得的字段，避免浪费完整音频。
-				s.logger.Warn("fetch music metadata", "provider", job.Provider, "trackId", job.TrackID, "error", metadataErr)
+				s.logger.Warn("fetch music metadata", "provider", row.Provider, "trackId", row.TrackID, "error", metadataErr)
 			}
-			if providerMetadata.Name != "" && (metadata.Name == "" || metadata.Name == job.Provider+"-"+job.TrackID) {
+			if providerMetadata.Name != "" && (metadata.Name == "" || metadata.Name == row.Provider+"-"+row.TrackID) {
 				metadata.Name = providerMetadata.Name
 			}
 			if len(metadata.Artists) == 0 {
@@ -296,10 +350,12 @@ func (s *Music) runDownload(id int64) {
 	// 下载记录完成后，将实际文件同步进本地曲库表。
 	info, statErr := os.Stat(result.Path)
 	if statErr == nil {
-		file := libraryFile(result.Path, info)
-		if err := s.store.UpsertDownloadedFile(taskCtx, row.MusicID, scanToken(), file); err != nil {
+		file := libraryFile(info)
+		s.libraryMu.Lock()
+		if err := s.store.UpsertDownloadedFile(taskCtx, row, scanToken(), file); err != nil {
 			s.logger.Error("record downloaded library file", "path", result.Path, "error", err)
 		}
+		s.libraryMu.Unlock()
 	}
 }
 
@@ -311,9 +367,12 @@ func (s *Music) ListDownloads(ctx context.Context, limit int64) ([]model.Downloa
 	}
 	result := make([]model.DownloadHistory, 0, len(rows))
 	for _, row := range rows {
+		var artists []string
+		if err := json.Unmarshal([]byte(row.Artists), &artists); err != nil {
+			return nil, fmt.Errorf("decode download artists: %w", err)
+		}
 		result = append(result, model.DownloadHistory{
-			ID: row.ID, MusicID: row.MusicID, MusicName: row.MusicName,
-			Album:    row.MusicAlbum,
+			ID: row.ID, Name: row.Name, Artists: artists, Album: row.Album,
 			Provider: row.Provider, TrackID: row.TrackID, Quality: row.Quality,
 			Status: row.Status, Progress: row.Progress, DownloadedBytes: row.DownloadedBytes,
 			TotalBytes: row.TotalBytes, Attempt: row.Attempt,
@@ -435,39 +494,28 @@ func (s *Music) cancelRunning(id int64) {
 	}
 }
 
-// ListLibrary 返回下载目录中的音频文件信息。
-func (s *Music) ListLibrary(ctx context.Context, limit int64) ([]model.LibraryFile, error) {
-	rows, err := s.store.ListLibraryFiles(ctx, limit)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]model.LibraryFile, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, model.LibraryFile{
-			ID:         row.ID,
-			MusicID:    row.MusicID,
-			Path:       row.Path,
-			FileName:   row.FileName,
-			Extension:  row.Extension,
-			Size:       row.Size,
-			ModifiedAt: row.ModifiedAt,
-			Provider:   row.Provider,
-			TrackID:    row.TrackID,
-			MusicName:  row.MusicName,
-			Album:      row.MusicAlbum,
-		})
-	}
-	return result, nil
+func (s *Music) IsLibraryFileExist(ctx context.Context, name string) (bool, error) {
+	return s.store.IsLibraryFileExist(ctx, name)
+}
+
+func (s *Music) FindLibraryFilesByName(ctx context.Context, name string) ([]repo.LibraryFile, error) {
+	return s.store.FindLibraryFileByName(ctx, name)
 }
 
 // ScanLibrary 扫描下载目录中的音频文件，并让数据库与磁盘保持一致。
 func (s *Music) ScanLibrary(ctx context.Context) (int, error) {
+	s.libraryMu.Lock()
+	defer s.libraryMu.Unlock()
+
 	absDir, err := filepath.Abs(s.downloadDir)
 	if err != nil {
 		return 0, err
 	}
 	files := make([]database.LibraryFileParams, 0)
 	err = filepath.WalkDir(absDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -478,7 +526,7 @@ func (s *Music) ScanLibrary(ctx context.Context) (int, error) {
 		if err != nil {
 			return err
 		}
-		files = append(files, libraryFile(path, info))
+		files = append(files, libraryFile(info))
 		return nil
 	})
 	if err != nil {
@@ -503,10 +551,8 @@ func (s *Music) failDownload(id int64, cause error) {
 	}
 }
 
-func libraryFile(path string, info fs.FileInfo) database.LibraryFileParams {
-	absPath, _ := filepath.Abs(path)
+func libraryFile(info fs.FileInfo) database.LibraryFileParams {
 	return database.LibraryFileParams{
-		Path:      absPath,
 		FileName:  info.Name(),
 		Extension: strings.TrimPrefix(strings.ToLower(filepath.Ext(info.Name())), "."),
 		Size:      info.Size(),
@@ -524,3 +570,15 @@ func isAudioFile(path string) bool {
 }
 
 func scanToken() string { return time.Now().UTC().Format(time.RFC3339Nano) }
+
+func nextDailyRun(now time.Time, scanAt time.Duration, location *time.Location) time.Time {
+	localNow := now.In(location)
+	next := time.Date(
+		localNow.Year(), localNow.Month(), localNow.Day(),
+		0, 0, 0, 0, location,
+	).Add(scanAt)
+	if !next.After(localNow) {
+		next = next.AddDate(0, 0, 1)
+	}
+	return next
+}

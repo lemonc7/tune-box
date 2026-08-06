@@ -70,32 +70,32 @@ type DownloadTaskResult struct {
 
 // DownloadHistory 描述一次下载从创建到结束的状态和结果。
 type DownloadHistory struct {
-	ID              int64   `json:"id"`
-	MusicID         int64   `json:"musicId"`
-	MusicName       string  `json:"musicName"`
-	Album           *string `json:"album,omitempty"`
-	Provider        string  `json:"provider"`
-	TrackID         string  `json:"trackId"`
-	Quality         string  `json:"quality"`
-	Status          string  `json:"status"`
-	Progress        int64   `json:"progress"`
-	DownloadedBytes int64   `json:"downloadedBytes"`
-	TotalBytes      int64   `json:"totalBytes"`
-	Attempt         int64   `json:"attempt"`
-	FileName        *string `json:"fileName,omitempty"`
-	Path            *string `json:"path,omitempty"`
-	Size            *int64  `json:"size,omitempty"`
-	ContentType     *string `json:"contentType,omitempty"`
-	ErrorMessage    *string `json:"errorMessage,omitempty"`
-	CreatedAt       string  `json:"createdAt"`
-	StartedAt       *string `json:"startedAt,omitempty"`
-	FinishedAt      *string `json:"finishedAt,omitempty"`
+	ID              int64    `json:"id"`
+	Name            string   `json:"name"`
+	Artists         []string `json:"artists,omitempty"`
+	Album           *string  `json:"album,omitempty"`
+	Provider        string   `json:"provider"`
+	TrackID         string   `json:"trackId"`
+	Quality         string   `json:"quality"`
+	Status          string   `json:"status"`
+	Progress        int64    `json:"progress"`
+	DownloadedBytes int64    `json:"downloadedBytes"`
+	TotalBytes      int64    `json:"totalBytes"`
+	Attempt         int64    `json:"attempt"`
+	FileName        *string  `json:"fileName,omitempty"`
+	Path            *string  `json:"path,omitempty"`
+	Size            *int64   `json:"size,omitempty"`
+	ContentType     *string  `json:"contentType,omitempty"`
+	ErrorMessage    *string  `json:"errorMessage,omitempty"`
+	CreatedAt       string   `json:"createdAt"`
+	StartedAt       *string  `json:"startedAt,omitempty"`
+	FinishedAt      *string  `json:"finishedAt,omitempty"`
 }
 
 // LibraryFile 是下载目录中实际存在的一份音频文件。
 type LibraryFile struct {
 	ID         int64   `json:"id"`
-	MusicID    *int64  `json:"musicId,omitempty"`
+	DownloadID *int64  `json:"downloadId,omitempty"`
 	Path       string  `json:"path"`
 	FileName   string  `json:"fileName"`
 	Extension  string  `json:"extension"`
@@ -103,7 +103,8 @@ type LibraryFile struct {
 	ModifiedAt string  `json:"modifiedAt"`
 	Provider   *string `json:"provider,omitempty"`
 	TrackID    *string `json:"trackId,omitempty"`
-	MusicName  *string `json:"musicName,omitempty"`
+	Quality    *string `json:"quality,omitempty"`
+	Name       *string `json:"name,omitempty"`
 	Album      *string `json:"album,omitempty"`
 }
 

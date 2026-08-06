@@ -85,6 +85,7 @@ func (r *ResourceHandler) Download(c *echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return err
 	}
+
 	result, err := r.Music.Download(c.Request().Context(), req)
 	if err != nil {
 		if providerError := mapProviderError(err); providerError != nil {
@@ -184,26 +185,6 @@ func (r *ResourceHandler) Downloads(c *echo.Context) error {
 	})
 }
 
-// Library 返回下载目录中已经登记的音频文件。
-func (r *ResourceHandler) Library(c *echo.Context) error {
-	var req model.ListRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "bad request").Wrap(err)
-	}
-	if err := c.Validate(&req); err != nil {
-		return err
-	}
-	result, err := r.Music.ListLibrary(c.Request().Context(), int64(req.Limit))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-	return c.JSON(http.StatusOK, model.Response{
-		Code: http.StatusOK,
-		Msg:  "ok",
-		Data: result,
-	})
-}
-
 // ScanLibrary 立即扫描下载目录，使数据库记录与磁盘文件保持一致。
 func (r *ResourceHandler) ScanLibrary(c *echo.Context) error {
 	count, err := r.Music.ScanLibrary(c.Request().Context())
@@ -214,6 +195,32 @@ func (r *ResourceHandler) ScanLibrary(c *echo.Context) error {
 		Code: http.StatusOK,
 		Msg:  "ok",
 		Data: model.LibraryScanResult{Files: count},
+	})
+}
+
+func (r *ResourceHandler) IsLibraryFileExist(c *echo.Context) error {
+	name := c.QueryParam("name")
+	exist, err := r.Music.IsLibraryFileExist(c.Request().Context(), name)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, model.Response{
+		Code: http.StatusOK,
+		Msg:  "ok",
+		Data: exist,
+	})
+}
+
+func (r *ResourceHandler) FindLibraryFilesByName(c *echo.Context) error {
+	name := c.QueryParam("name")
+	result, err := r.Music.FindLibraryFilesByName(c.Request().Context(), name)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, model.Response{
+		Code: http.StatusOK,
+		Msg:  "ok",
+		Data: result,
 	})
 }
 
