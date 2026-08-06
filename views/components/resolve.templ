@@ -8,10 +8,12 @@ import (
 
 templ ResolveButton(track model.Track, quality model.Quality) {
 	<form
-		hx-post="/web/resolve"
+		class="quality-form"
+		hx-post="/web/downloads"
 		hx-target={ "#resolve-" + track.Provider + "-" + track.ID }
 		hx-swap="innerHTML"
 		hx-indicator="find .htmx-indicator"
+		hx-disabled-elt="find button"
 	>
 		<input type="hidden" name="provider" value={ track.Provider }/>
 		<input type="hidden" name="trackId" value={ track.ID }/>
@@ -27,13 +29,14 @@ templ ResolveButton(track model.Track, quality model.Quality) {
 		for _,artist := range track.Artists {
 			<input type="hidden" name="artists" value={ artist }/>
 		}
-		<button type="submit">
-			{ quality.Label }
+		<button type="submit" title={ "下载 " + quality.Label }>
+			<span>下载</span>
+			{ " · " + quality.Label }
 			if quality.Format !=  "" {
 				<span>{ " · " + quality.Format }</span>
 			}
 		</button>
-		<span class="htmx-indicator">解析中...</span>
+		<span class="htmx-indicator">正在加入...</span>
 	</form>
 }
 

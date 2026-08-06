@@ -142,6 +142,211 @@ button:disabled {
 	opacity: 0.65;
 }
 
+.search-panel {
+	overflow: hidden;
+	background:
+		linear-gradient(135deg, rgba(238, 242, 255, 0.96), rgba(255, 255, 255, 0.98) 48%),
+		#fff;
+}
+
+.search-heading {
+	margin-bottom: 1.35rem;
+}
+
+.search-heading h1 {
+	margin-bottom: 0.35rem;
+}
+
+.search-heading p:last-child {
+	margin-bottom: 0;
+	color: #64748b;
+}
+
+.eyebrow {
+	margin-bottom: 0.45rem;
+	color: #4f46e5;
+	font-size: 0.72rem;
+	font-weight: 800;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.search-form {
+	display: grid;
+	gap: 1rem;
+}
+
+.search-fields {
+	display: grid;
+	grid-template-columns: minmax(10rem, 0.32fr) minmax(16rem, 1fr);
+	gap: 0.85rem;
+}
+
+.search-field input,
+.search-field select {
+	width: 100%;
+	min-width: 0;
+	border-color: #c7d2fe;
+	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.search-field input:focus,
+.search-field select:focus {
+	border-color: #6366f1;
+	outline: 3px solid rgba(99, 102, 241, 0.14);
+}
+
+.search-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.lossless-option {
+	position: relative;
+	display: inline-flex;
+	grid-template-columns: none;
+	align-items: center;
+	gap: 0.75rem;
+	cursor: pointer;
+	padding: 0.6rem 0.75rem;
+	border: 1px solid #e0e7ff;
+	border-radius: 0.85rem;
+	background: rgba(255, 255, 255, 0.78);
+}
+
+.lossless-option input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	min-width: 0;
+	min-height: 0;
+	opacity: 0;
+}
+
+.lossless-switch {
+	position: relative;
+	width: 2.55rem;
+	height: 1.45rem;
+	flex: 0 0 auto;
+	border-radius: 999px;
+	background: #cbd5e1;
+	transition: background 160ms ease;
+}
+
+.lossless-switch::after {
+	position: absolute;
+	top: 0.2rem;
+	left: 0.2rem;
+	width: 1.05rem;
+	height: 1.05rem;
+	border-radius: 50%;
+	background: #fff;
+	box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
+	content: "";
+	transition: transform 160ms ease;
+}
+
+.lossless-option input:checked + .lossless-switch {
+	background: #4f46e5;
+}
+
+.lossless-option input:checked + .lossless-switch::after {
+	transform: translateX(1.1rem);
+}
+
+.lossless-option input:focus-visible + .lossless-switch {
+	outline: 3px solid rgba(99, 102, 241, 0.22);
+	outline-offset: 2px;
+}
+
+.lossless-copy {
+	display: grid;
+	gap: 0.08rem;
+}
+
+.lossless-copy strong {
+	color: #334155;
+	font-size: 0.88rem;
+}
+
+.lossless-copy small {
+	color: #94a3b8;
+	font-size: 0.72rem;
+	font-weight: 500;
+}
+
+.search-submit {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.8rem;
+}
+
+.result-summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 0.25rem;
+}
+
+.result-summary h2 {
+	margin: 0;
+}
+
+.result-summary span {
+	padding: 0.35rem 0.65rem;
+	border-radius: 999px;
+	color: #4338ca;
+	font-size: 0.8rem;
+	font-weight: 700;
+	background: #eef2ff;
+}
+
+.pagination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.65rem;
+	margin-top: 1.25rem;
+	padding-top: 1rem;
+	border-top: 1px solid #e2e8f0;
+}
+
+.pagination a,
+.pagination-disabled,
+.pagination-current {
+	min-width: 5rem;
+	padding: 0.55rem 0.8rem;
+	border-radius: 0.7rem;
+	text-align: center;
+}
+
+.pagination a {
+	color: #4338ca;
+	font-weight: 700;
+	text-decoration: none;
+	background: #eef2ff;
+}
+
+.pagination a:hover {
+	color: #fff;
+	background: #4f46e5;
+}
+
+.pagination-disabled {
+	color: #94a3b8;
+	background: #f1f5f9;
+}
+
+.pagination-current {
+	color: #475569;
+	font-variant-numeric: tabular-nums;
+	font-weight: 700;
+}
+
 .track,
 #download-list > article {
 	display: flex;
@@ -172,6 +377,40 @@ button:disabled {
 .track p {
 	margin-bottom: 0.5rem;
 	color: #64748b;
+}
+
+.quality-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-top: 0.75rem;
+}
+
+.track .quality-form {
+	display: inline-flex;
+	align-items: center;
+	width: auto;
+	gap: 0.45rem;
+}
+
+.track .quality-form button {
+	width: auto;
+	min-height: 2.2rem;
+	padding: 0.45rem 0.75rem;
+	font-size: 0.82rem;
+}
+
+.track .quality-form .htmx-indicator {
+	font-size: 0.78rem;
+}
+
+.download-feedback:empty {
+	display: none;
+}
+
+.download-feedback .notice,
+.download-feedback .error {
+	margin-top: 0.75rem;
 }
 
 #download-list > article {
@@ -265,6 +504,27 @@ th {
 	select,
 	button {
 		width: 100%;
+	}
+
+	.search-fields {
+		grid-template-columns: 1fr;
+	}
+
+	.search-toolbar {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.lossless-option {
+		display: flex;
+	}
+
+	.lossless-option input {
+		width: 1px;
+	}
+
+	.search-submit {
+		justify-content: stretch;
 	}
 
 	.track {

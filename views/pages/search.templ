@@ -6,73 +6,148 @@ import (
 	"github.com/lemonc7/tune-go/provider"
 	"github.com/lemonc7/tune-go/views/components"
 	"github.com/lemonc7/tune-go/views/layout"
+	"net/url"
+	"strconv"
 	"strings"
 )
 
-templ SearchPage(providers []provider.Info) {
-	@layout.Layout("TuneGo", SearchContent(providers))
+templ SearchPage(
+	providers []provider.Info,
+	request model.SearchRequest,
+	result *model.SearchResult,
+	message string,
+) {
+	@layout.Layout("TuneGo", SearchContent(providers, request, result, message))
 }
 
-templ SearchContent(providers []provider.Info) {
-	<section>
-		<h1>搜索音乐</h1>
+templ SearchContent(
+	providers []provider.Info,
+	request model.SearchRequest,
+	result *model.SearchResult,
+	message string,
+) {
+	<section class="search-panel">
+		<header class="search-heading">
+			<div>
+				<p class="eyebrow">TuneGo Search</p>
+				<h1>找到想听的音乐</h1>
+				<p>选择音乐源，按歌曲、歌手或专辑搜索。</p>
+			</div>
+		</header>
 		<form
+			class="search-form"
 			action="/"
 			method="get"
-			hx-get="/web/search"
+			hx-get="/"
 			hx-target="#search-results"
 			hx-swap="innerHTML"
 			hx-indicator="#search-loading"
+			hx-push-url="true"
 		>
-			<label>
-				音乐源
-				<select name="provider" required>
-					for _,item := range providers {
-						<option
-							value={ item.Name }
-							disabled?={ !item.Available }
-						>
-							{ item.Name }
-						</option>
-					}
-				</select>
-			</label>
-			<label>
-				关键词
-				<input
-					name="q"
-					type="search"
-					placeholder="歌曲、歌手或专辑"
-					required
-				/>
-			</label>
-			<label>
-				<input name="lossless" type="checkbox" value="true"/>
-				仅显示无损音乐
-			</label>
+			<div class="search-fields">
+				<label class="search-field search-provider">
+					<span>音乐源</span>
+					<select name="provider" required>
+						for _,item := range providers {
+							<option
+								value={ item.Name }
+								disabled?={ !item.Available }
+								selected?={ request.Provider == item.Name }
+							>
+								{ item.Name }
+							</option>
+						}
+					</select>
+				</label>
+				<label class="search-field search-query">
+					<span>关键词</span>
+					<input
+						name="q"
+						type="search"
+						placeholder="歌曲、歌手或专辑"
+						value={ request.Query }
+						required
+					/>
+				</label>
+			</div>
+			<div class="search-toolbar">
+				<label class="lossless-option">
+					<input
+						name="lossless"
+						type="checkbox"
+						value="true"
+						checked?={ request.Lossless }
+					/>
+					<span class="lossless-switch" aria-hidden="true"></span>
+					<span class="lossless-copy">
+						<strong>仅显示无损音乐</strong>
+						<small>FLAC、APE 与 Hi-Res</small>
+					</span>
+				</label>
+				<div class="search-submit">
+					<span id="search-loading" class="htmx-indicator">搜索中...</span>
+					<button type="submit">搜索音乐</button>
+				</div>
+			</div>
 			<input name="page" type="hidden" value="1"/>
 			<input name="limit" type="hidden" value="20"/>
-			<button type="submit">搜索</button>
-			<span id="search-loading" class="htmx-indicator">
-				搜索中...
-			</span>
 		</form>
 	</section>
 	<section id="search-results" aria-live="polite">
-		@components.Empty("请输入关键词开始搜索")
+		if message != "" {
+			@components.ErrorNotice(message)
+		} else if result != nil {
+			@SearchResults(*result, request.Lossless)
+		} else {
+			@components.Empty("请输入关键词开始搜索")
+		}
 	</section>
 }
 
-templ SearchResults(result model.SearchResult) {
-	if len(result.Tracks) == 0 {
-		@components.Empty("没有找到歌曲")
-	} else {
-		<div>
-			<p>
-				{ fmt.Sprintf("找到 %d 条结果",result.Total) }
-			</p>
+templ SearchResults(result model.SearchResult, lossless bool) {
+	<div class="search-result-list">
+		if len(result.Tracks) == 0 {
+			@components.Empty("本页没有符合条件的歌曲，可以继续查看其他分页")
+		} else {
+			<header class="result-summary">
+				<h2>搜索结果</h2>
+				<span>{ fmt.Sprintf("第 %d 页 · 平台共 %d 首",result.Page,result.Total) }</span>
+			</header>
 			for _,track := range result.Tracks {
 				@TrackCard(track)
+			}
+		}
+		@SearchPagination(result, lossless)
+	</div>
+}
+
+templ SearchPagination(result model.SearchResult, lossless bool) {
+	if totalPages(result) > 1 {
+		<div class="pagination" role="navigation" aria-label="搜索结果分页">
+			if result.Page > 1 {
+				<a
+					href={ searchPageURL(result, lossless, result.Page-1) }
+					hx-get={ searchPageURL(result, lossless, result.Page-1) }
+					hx-target="#search-results"
+					hx-swap="innerHTML"
+					hx-push-url="true"
+				>上一页</a>
+			} else {
+				<span class="pagination-disabled">上一页</span>
+			}
+			<span class="pagination-current">
+				{ fmt.Sprintf("%d / %d", result.Page, totalPages(result)) }
+			</span>
+			if result.Page < totalPages(result) {
+				<a
+					href={ searchPageURL(result, lossless, result.Page+1) }
+					hx-get={ searchPageURL(result, lossless, result.Page+1) }
+					hx-target="#search-results"
+					hx-swap="innerHTML"
+					hx-push-url="true"
+				>下一页</a>
+			} else {
+				<span class="pagination-disabled">下一页</span>
 			}
 		</div>
 	}
@@ -97,12 +172,31 @@ templ TrackCard(track model.Track) {
 			if track.Album != "" {
 				<p>专辑: { track.Album }</p>
 			}
-			<div>
+			<div class="quality-actions">
 				for _,quality := range track.Qualities {
 					@components.ResolveButton(track, quality)
 				}
 			</div>
-			<div id={ "resolve-" + track.Provider + "-" + track.ID }></div>
+			<div class="download-feedback" id={ "resolve-" + track.Provider + "-" + track.ID }></div>
 		</div>
 	</article>
+}
+
+func totalPages(result model.SearchResult) int {
+	if result.Limit <= 0 || result.Total <= 0 {
+		return 0
+	}
+	return (result.Total + result.Limit - 1) / result.Limit
+}
+
+func searchPageURL(result model.SearchResult, lossless bool, page int) string {
+	values := url.Values{}
+	values.Set("provider", result.Provider)
+	values.Set("q", result.Query)
+	values.Set("page", strconv.Itoa(page))
+	values.Set("limit", strconv.Itoa(result.Limit))
+	if lossless {
+		values.Set("lossless", "true")
+	}
+	return "/?" + values.Encode()
 }

@@ -18,24 +18,50 @@ type Handler struct {
 }
 
 func (h *Handler) Home(c *echo.Context) error {
+	req := searchRequest(c)
+	if req.Provider == "" && req.Query == "" {
+		return render(
+			c,
+			http.StatusOK,
+			pages.SearchPage(h.Music.Providers(), req, nil, ""),
+		)
+	}
+
+	if req.Provider == "" || req.Query == "" {
+		const message = "音乐源和关键词不能为空"
+		if isHTMXRequest(c) {
+			return render(c, http.StatusOK, components.ErrorNotice(message))
+		}
+		return render(
+			c,
+			http.StatusOK,
+			pages.SearchPage(h.Music.Providers(), req, nil, message),
+		)
+	}
+
+	result, err := h.Music.Search(c.Request().Context(), req)
+	if err != nil {
+		if isHTMXRequest(c) {
+			return renderError(c, err)
+		}
+		return render(
+			c,
+			http.StatusOK,
+			pages.SearchPage(h.Music.Providers(), req, nil, err.Error()),
+		)
+	}
+	if isHTMXRequest(c) {
+		return render(c, http.StatusOK, pages.SearchResults(result, req.Lossless))
+	}
 	return render(
 		c,
 		http.StatusOK,
-		pages.SearchPage(h.Music.Providers()),
+		pages.SearchPage(h.Music.Providers(), req, &result, ""),
 	)
 }
 
 func (h *Handler) Search(c *echo.Context) error {
-	page := queryInt(c, "page", 1)
-	limit := queryInt(c, "limit", 20)
-
-	req := model.SearchRequest{
-		Provider: strings.TrimSpace(c.QueryParam("provider")),
-		Query:    strings.TrimSpace(c.QueryParam("q")),
-		Page:     page,
-		Limit:    limit,
-		Lossless: c.QueryParam("lossless") == "true",
-	}
+	req := searchRequest(c)
 
 	if req.Provider == "" || req.Query == "" {
 		return render(
@@ -53,8 +79,31 @@ func (h *Handler) Search(c *echo.Context) error {
 	return render(
 		c,
 		http.StatusOK,
-		pages.SearchResults(result),
+		pages.SearchResults(result, req.Lossless),
 	)
+}
+
+func searchRequest(c *echo.Context) model.SearchRequest {
+	providerName := strings.TrimSpace(c.QueryParam("provider"))
+	query := strings.TrimSpace(c.QueryParam("q"))
+	lossless := c.QueryParam("lossless") == "true"
+	// 初次打开搜索页时默认启用无损过滤；提交搜索后以复选框参数为准。
+	if providerName == "" && query == "" {
+		lossless = true
+	}
+	return model.SearchRequest{
+		Provider: providerName,
+		Query:    query,
+		Page:     queryInt(c, "page", 1),
+		Limit:    queryInt(c, "limit", 20),
+		Lossless: lossless,
+	}
+}
+
+func isHTMXRequest(c *echo.Context) bool {
+	request := c.Request()
+	return request.Header.Get("HX-Request") == "true" &&
+		request.Header.Get("HX-History-Restore-Request") != "true"
 }
 
 func (h *Handler) Resolve(c *echo.Context) error {
