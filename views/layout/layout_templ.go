@@ -42,7 +42,7 @@ func Layout(title string, content templ.Component) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/assets/favicon.ico\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/htmx.min.js\"></script></head><body hx-boost=\"true\"><header><nav><a href=\"/\">搜索</a> <a href=\"/downloads\">下载历史</a> <a href=\"/library\">本地曲库</a></nav></header><main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/assets/favicon.ico\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/htmx.min.js\"></script></head><body hx-boost=\"true\"><header><nav><a href=\"/\">搜索</a> <a href=\"/downloads\">下载历史</a></nav></header><main>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -15,7 +14,6 @@ import (
 type Config struct {
 	Server    ServerConfig    `yaml:"server"`
 	Download  DownloadConfig  `yaml:"download"`
-	Library   LibraryConfig   `yaml:"library"`
 	Providers ProvidersConfig `yaml:"providers"`
 	Database  DatabaseConfig  `yaml:"database"`
 }
@@ -32,36 +30,6 @@ type DownloadConfig struct {
 	Dir           string `yaml:"dir" env:"DOWNLOAD_DIR" env-default:"./downloads"`
 	MaxBytes      int64  `yaml:"max_bytes" env:"MAX_DOWNLOAD_BYTES" env-default:"104857600"`
 	MaxConcurrent int    `yaml:"max_concurrent" env:"MAX_CONCURRENT_DOWNLOADS" env-default:"2"`
-}
-
-// LibraryConfig 控制本地曲库的定时扫描。ScanAt 为空时只执行启动扫描和手动扫描。
-type LibraryConfig struct {
-	ScanAt   string `yaml:"scan_at" env:"LIBRARY_SCAN_AT"`
-	Timezone string `yaml:"timezone" env:"LIBRARY_TIMEZONE" env-default:"Local"`
-}
-
-// ScanSchedule 将每天的扫描时间转换为当天零点后的时长和对应时区。
-func (c LibraryConfig) ScanSchedule() (time.Duration, *time.Location, bool, error) {
-	scanAt := strings.TrimSpace(c.ScanAt)
-	if scanAt == "" {
-		return 0, nil, false, nil
-	}
-	parsed, err := time.Parse("15:04", scanAt)
-	if err != nil {
-		return 0, nil, false, fmt.Errorf("library.scan_at must use HH:MM format: %w", err)
-	}
-
-	timezone := strings.TrimSpace(c.Timezone)
-	if timezone == "" || timezone == "Local" {
-		timezone = "Local"
-	}
-	location, err := time.LoadLocation(timezone)
-	if err != nil {
-		return 0, nil, false, fmt.Errorf("load library.timezone %q: %w", timezone, err)
-	}
-
-	scanTime := time.Duration(parsed.Hour())*time.Hour + time.Duration(parsed.Minute())*time.Minute
-	return scanTime, location, true, nil
 }
 
 // ProvidersConfig 保存各音乐平台的接口配置。
@@ -84,7 +52,6 @@ type NeteaseConfig struct {
 }
 
 // DatabaseConfig 定义 SQLite 连接池和锁等待配置。
-// 外键、WAL 等数据库约束固定写入 DSN，不允许通过配置关闭。
 type DatabaseConfig struct {
 	Path            string        `yaml:"path" env:"TUNE_GO_DB_PATH" env-default:"./data/tune-go.db"`
 	MaxOpenConns    int           `yaml:"max_open_conns" env:"TUNE_GO_DB_MAX_OPEN_CONNS" env-default:"4"`
@@ -95,7 +62,6 @@ type DatabaseConfig struct {
 }
 
 // DSN 返回 modernc.org/sqlite 使用的连接字符串。
-// PRAGMA 写入 DSN 后会应用到 database/sql 创建的每一条连接。
 func (c DatabaseConfig) DSN(path string) (string, error) {
 	busyMilliseconds := c.BusyTimeout.Milliseconds()
 	if busyMilliseconds < 1 {
@@ -137,9 +103,6 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Database.Path == "" {
 		return nil, fmt.Errorf("database.path is required")
-	}
-	if _, _, _, err := cfg.Library.ScanSchedule(); err != nil {
-		return nil, err
 	}
 	return &cfg, nil
 }

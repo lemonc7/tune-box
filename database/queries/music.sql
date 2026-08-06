@@ -1,149 +1,137 @@
 -- name: CreateDownload :one
 INSERT INTO downloads (
-  provider, track_id, quality, name, artists, album, duration_ms, cover_url, file_name
+  provider,
+  track_id, 
+  quality, 
+  name, 
+  artists, 
+  album, 
+  cover_url
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(provider, track_id, quality) DO NOTHING
 RETURNING *;
 
 -- name: GetDownloadByKey :one
 SELECT * FROM downloads
-WHERE provider = ? 
-  AND track_id = ? 
+WHERE provider = ?
+  AND track_id = ?
   AND quality = ?;
 
 -- name: GetDownload :one
-SELECT * FROM downloads WHERE id = ?;
+SELECT * FROM downloads 
+WHERE id = ?;
 
 -- name: ListPendingDownloadIDs :many
-SELECT id FROM downloads WHERE status = 'pending' ORDER BY id;
+SELECT id FROM downloads 
+WHERE status = 'pending' 
+ORDER BY id;
 
 -- name: ResetInterruptedDownloads :exec
 UPDATE downloads
-SET status = 'pending', 
-    error_message = ?, 
+SET status = 'pending',
+    error_message = ?,
     finished_at = NULL,
     updated_at = CURRENT_TIMESTAMP
 WHERE status IN ('resolving', 'downloading', 'tagging');
 
 -- name: ClaimDownload :one
 UPDATE downloads
-SET status = 'resolving', 
-    started_at = CURRENT_TIMESTAMP, 
+SET status = 'resolving',
+    started_at = CURRENT_TIMESTAMP,
     finished_at = NULL,
-    error_message = NULL, 
-    attempt = attempt + 1, 
+    error_message = NULL,
+    attempt = attempt + 1,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status = 'pending'
 RETURNING *;
 
 -- name: MarkDownloadDownloading :execrows
 UPDATE downloads
-SET status = 'downloading', 
-    resource_url = ?, 
+SET status = 'downloading',
+    resource_url = ?,
     finished_at = NULL,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status = 'resolving';
 
 -- name: UpdateDownloadProgress :exec
 UPDATE downloads
-SET progress = ?, 
-    downloaded_bytes = ?, 
+SET downloaded_bytes = ?,
     total_bytes = ?,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status = 'downloading';
 
 -- name: MarkDownloadTagging :execrows
-UPDATE downloads 
-SET status = 'tagging', 
+UPDATE downloads
+SET status = 'tagging',
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status = 'downloading';
 
 -- name: MarkDownloadCompleted :execrows
 UPDATE downloads
-SET status = 'completed', 
-    file_name = ?,
-    path = ?, 
-    size = ?, 
-    content_type = ?,
-    progress = 100, 
-    downloaded_bytes = ?, 
+SET status = 'completed',
+    path = ?,
+    size = ?,
+    downloaded_bytes = ?,
     total_bytes = ?,
-    error_message = NULL, 
+    error_message = NULL,
     finished_at = CURRENT_TIMESTAMP,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status = 'tagging';
-
--- name: RequeueMissingDownload :execrows
-UPDATE downloads
-SET status = 'pending', 
-    progress = 0, 
-    downloaded_bytes = 0, 
-    total_bytes = 0,
-    resource_url = NULL, 
-    path = NULL, 
-    size = NULL, 
-    content_type = NULL,
-    error_message = NULL, 
-    started_at = NULL, 
-    finished_at = NULL,
-    updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
-  AND status = 'completed';
 
 -- name: MarkDownloadFailed :exec
 UPDATE downloads
-SET status = 'failed', 
-    error_message = ?, 
+SET status = 'failed',
+    error_message = ?,
     finished_at = CURRENT_TIMESTAMP,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status NOT IN ('paused', 'cancelled', 'completed');
 
 -- name: PauseDownload :execrows
-UPDATE downloads 
-SET status = 'paused', 
+UPDATE downloads
+SET status = 'paused',
   updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status IN ('pending', 'resolving', 'downloading');
 
 -- name: CancelDownload :execrows
 UPDATE downloads
-SET status = 'cancelled', 
-    error_message = ?, 
+SET status = 'cancelled',
+    error_message = ?,
     finished_at = CURRENT_TIMESTAMP,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status IN ('pending', 'resolving', 'downloading', 'tagging', 'paused');
 
 -- name: ResumeDownload :execrows
 UPDATE downloads
-SET status = 'pending', 
-    error_message = NULL, 
+SET status = 'pending',
+    error_message = NULL,
     finished_at = NULL,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status = 'paused';
 
 -- name: RetryDownload :execrows
 UPDATE downloads
-SET status = 'pending', 
-    resource_url = NULL, 
+SET status = 'pending',
+    resource_url = NULL,
     error_message = NULL,
-    started_at = NULL, 
-    finished_at = NULL, 
+    started_at = NULL,
+    finished_at = NULL,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? 
+WHERE id = ?
   AND status IN ('failed', 'cancelled');
 
 -- name: DeleteDownload :execrows
-DELETE FROM downloads 
-WHERE id = ? 
+DELETE FROM downloads
+WHERE id = ?
   AND status NOT IN ('resolving', 'downloading', 'tagging');
 
 -- name: ListDownloads :many
@@ -153,30 +141,44 @@ LIMIT ?;
 
 -- name: UpsertLibraryFile :exec
 INSERT INTO library_files (
-  file_name,
-  extension,
+  download_id,
+  name, 
+  artists, 
+  file_name, 
+  extension, 
   size, 
-  modified_at, 
-  scan_token
+  modified_at
 )
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT(file_name) DO UPDATE SET
-  scan_token = excluded.scan_token,
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(download_id) DO UPDATE SET
+  name = excluded.name,
+  artists = excluded.artists,
+  file_name = excluded.file_name,
+  extension = excluded.extension,
+  size = excluded.size,
+  modified_at = excluded.modified_at,
   updated_at = CURRENT_TIMESTAMP;
 
--- name: DeleteLibraryFilesNotSeen :exec
-DELETE FROM library_files WHERE scan_token <> ?;
+-- name: RequeueMissingDownload :execrows
+UPDATE downloads
+SET status = 'pending',
+    downloaded_bytes = 0,
+    total_bytes = 0,
+    resource_url = NULL,
+    path = NULL,
+    size = NULL,
+    error_message = NULL,
+    started_at = NULL,
+    finished_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+  AND status = 'completed';
 
--- name: DeleteLibraryFile :exec
-DELETE FROM library_files WHERE id = ?;
-
--- name: LibraryFileExists :one
-SELECT EXISTS(
-  SELECT 1
-  FROM library_files
-  WHERE file_name = ?
-);
-
--- name: FindLibraryFilesByName :many
+-- name: SearchLibraryFiles :many
 SELECT * FROM library_files
-WHERE file_name LIKE '%' || @name || '%';
+WHERE (
+  name LIKE '%' || @keyword || '%'
+  OR artists LIKE '%' || @keyword || '%'
+)
+ORDER BY created_at DESC
+LIMIT @limit;

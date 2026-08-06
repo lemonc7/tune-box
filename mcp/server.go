@@ -74,9 +74,6 @@ type listInput struct {
 type downloadsOutput struct {
 	Downloads []model.DownloadHistory `json:"downloads"`
 }
-type libraryOutput struct {
-	Files []model.LibraryFile `json:"files"`
-}
 
 // New 创建无状态的 Streamable HTTP MCP 服务。
 func New(music *service.Music, logger *slog.Logger) http.Handler {

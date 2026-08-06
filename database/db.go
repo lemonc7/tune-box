@@ -12,7 +12,6 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/sqlite"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/lemonc7/tune-go/config"
-	"github.com/lemonc7/tune-go/repo"
 	_ "modernc.org/sqlite"
 )
 
@@ -20,7 +19,7 @@ import (
 var migrations embed.FS
 
 // New 打开 SQLite、配置连接池、执行迁移并返回数据仓库。
-func New(cfg config.DatabaseConfig) (*Store, error) {
+func New(cfg config.DatabaseConfig) (*sql.DB, error) {
 	dbName, err := filepath.Abs(cfg.Path)
 	if err != nil {
 		return nil, fmt.Errorf("invalid db path: %w", err)
@@ -55,7 +54,7 @@ func New(cfg config.DatabaseConfig) (*Store, error) {
 		return nil, fmt.Errorf("ping SQLite: %w", err)
 	}
 
-	return &Store{db: db, queries: repo.New(db)}, nil
+	return db, nil
 }
 
 // migrateUp 执行嵌入二进制中的全部数据库迁移。

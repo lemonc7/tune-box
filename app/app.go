@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,6 +21,7 @@ import (
 	"github.com/lemonc7/tune-go/provider"
 	"github.com/lemonc7/tune-go/provider/kuwo"
 	"github.com/lemonc7/tune-go/provider/netease"
+	"github.com/lemonc7/tune-go/repo"
 	"github.com/lemonc7/tune-go/service"
 	"github.com/lemonc7/tune-go/tag"
 	"github.com/lemonc7/tune-go/web"
@@ -30,16 +32,11 @@ type App struct {
 	echo   *echo.Echo
 	logger *slog.Logger
 	music  *service.Music
-	store  *database.Store
+	db     *sql.DB
 }
 
 // New 创建应用并完成中间件、音乐源、数据库、下载器和路由的组装。
 func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
-	scanAt, scanLocation, scanScheduled, err := cfg.Library.ScanSchedule()
-	if err != nil {
-		return nil, fmt.Errorf("configure music library scan: %w", err)
-	}
-
 	e := echo.New()
 	e.Validator = &model.Validator{V: validator.New()}
 
@@ -67,7 +64,6 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	e.Use(middleware.Recover())
 
 	e.HTTPErrorHandler = func(c *echo.Context, err error) {
-		// 响应已经发送时不能再次写入统一错误结构。
 		if resp, err := echo.UnwrapResponse(c.Response()); err == nil {
 			if resp.Committed {
 				return
@@ -109,36 +105,35 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 			cfg.Providers.Netease.ExtendedResolveURL,
 		),
 	)
-	store, err := database.New(cfg.Database)
+	db, err := database.New(cfg.Database)
 	if err != nil {
 		return nil, fmt.Errorf("initialize database: %w", err)
 	}
-	downloader := download.New(downloadClient, cfg.Download.Dir, cfg.Download.MaxBytes)
-	musicService := service.NewMusic(registry, downloader, tag.New(client), store, cfg.Download.Dir, cfg.Download.MaxConcurrent, logger)
-	// 启动时同步一次目录，补录手动放入下载目录的音频文件。
-	if count, err := musicService.ScanLibrary(context.Background()); err != nil {
-		store.Close()
-		return nil, fmt.Errorf("scan music library: %w", err)
-	} else {
-		logger.Info("music library scanned", "files", count)
-	}
+	downloader := download.New(
+		downloadClient,
+		cfg.Download.Dir,
+		cfg.Download.MaxBytes,
+	)
+	musicService := service.NewMusic(
+		registry,
+		downloader,
+		tag.New(client),
+		repo.New(db),
+		cfg.Download.Dir,
+		cfg.Download.MaxConcurrent,
+		logger,
+	)
+
 	if err := musicService.Start(context.Background()); err != nil {
-		store.Close()
+		db.Close()
 		return nil, fmt.Errorf("start download queue: %w", err)
-	}
-	if scanScheduled {
-		if err := musicService.StartLibrarySchedule(scanAt, scanLocation); err != nil {
-			musicService.Close()
-			store.Close()
-			return nil, fmt.Errorf("start music library scan schedule: %w", err)
-		}
 	}
 
 	app := &App{
 		echo:   e,
 		logger: logger,
 		music:  musicService,
-		store:  store,
+		db:     db,
 	}
 
 	app.initRouter(musicService)
@@ -149,7 +144,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 // Close 先停止下载 worker，再关闭 SQLite 连接池。
 func (a *App) Close() error {
 	a.music.Close()
-	return a.store.Close()
+	return a.db.Close()
 }
 
 // ServeHTTP 让 App 实现标准库 http.Handler 接口。
@@ -182,9 +177,7 @@ func (a *App) initRouter(service *service.Music) {
 	api.POST("/downloads/:id/cancel", resource.CancelDownload)
 	api.POST("/downloads/:id/retry", resource.RetryDownload)
 	api.DELETE("/downloads/:id", resource.DeleteDownload)
-	api.POST("/library/scan", resource.ScanLibrary)
 
-	// 完整页面
 	a.echo.GET("/", web.Home)
 	a.echo.GET("/downloads", web.DownloadsPage)
 

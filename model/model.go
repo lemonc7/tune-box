@@ -34,7 +34,6 @@ type SearchResult struct {
 }
 
 // Resource 是 Provider 解析出的临时下载资源。
-// Headers 保存下载该资源时必须携带的请求头。
 type Resource struct {
 	Provider  string            `json:"provider"`
 	TrackID   string            `json:"trackId"`
@@ -85,30 +84,19 @@ type DownloadHistory struct {
 	FileName        *string  `json:"fileName,omitempty"`
 	Path            *string  `json:"path,omitempty"`
 	Size            *int64   `json:"size,omitempty"`
-	ContentType     *string  `json:"contentType,omitempty"`
 	ErrorMessage    *string  `json:"errorMessage,omitempty"`
 	CreatedAt       string   `json:"createdAt"`
 	StartedAt       *string  `json:"startedAt,omitempty"`
 	FinishedAt      *string  `json:"finishedAt,omitempty"`
 }
 
-// LibraryFile 是下载目录中实际存在的一份音频文件。
+// LibraryFile 是曲库中由下载任务产生的音频文件。
 type LibraryFile struct {
-	ID         int64   `json:"id"`
-	DownloadID *int64  `json:"downloadId,omitempty"`
-	Path       string  `json:"path"`
-	FileName   string  `json:"fileName"`
-	Extension  string  `json:"extension"`
-	Size       int64   `json:"size"`
-	ModifiedAt string  `json:"modifiedAt"`
-	Provider   *string `json:"provider,omitempty"`
-	TrackID    *string `json:"trackId,omitempty"`
-	Quality    *string `json:"quality,omitempty"`
-	Name       *string `json:"name,omitempty"`
-	Album      *string `json:"album,omitempty"`
-}
-
-// LibraryScanResult 返回本次目录扫描发现的音频文件数量。
-type LibraryScanResult struct {
-	Files int `json:"files"`
+	ID         int64  `json:"id"`
+	DownloadID int64  `json:"downloadId"`
+	Path       string `json:"path"`
+	FileName   string `json:"fileName"`
+	Extension  string `json:"extension"`
+	Size       int64  `json:"size"`
+	ModifiedAt string `json:"modifiedAt"`
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/lemonc7/tune-go/service"
 )
 
-// ResourceHandler 处理音乐源、搜索、解析、下载和曲库相关的 REST 请求。
+// ResourceHandler 处理音乐源、搜索、解析、下载相关的 REST 请求。
 type ResourceHandler struct {
 	Music *service.Music
 }
@@ -175,45 +175,6 @@ func (r *ResourceHandler) Downloads(c *echo.Context) error {
 		return err
 	}
 	result, err := r.Music.ListDownloads(c.Request().Context(), int64(req.Limit))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-	return c.JSON(http.StatusOK, model.Response{
-		Code: http.StatusOK,
-		Msg:  "ok",
-		Data: result,
-	})
-}
-
-// ScanLibrary 立即扫描下载目录，使数据库记录与磁盘文件保持一致。
-func (r *ResourceHandler) ScanLibrary(c *echo.Context) error {
-	count, err := r.Music.ScanLibrary(c.Request().Context())
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-	return c.JSON(http.StatusOK, model.Response{
-		Code: http.StatusOK,
-		Msg:  "ok",
-		Data: model.LibraryScanResult{Files: count},
-	})
-}
-
-func (r *ResourceHandler) IsLibraryFileExist(c *echo.Context) error {
-	name := c.QueryParam("name")
-	exist, err := r.Music.IsLibraryFileExist(c.Request().Context(), name)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-	return c.JSON(http.StatusOK, model.Response{
-		Code: http.StatusOK,
-		Msg:  "ok",
-		Data: exist,
-	})
-}
-
-func (r *ResourceHandler) FindLibraryFilesByName(c *echo.Context) error {
-	name := c.QueryParam("name")
-	result, err := r.Music.FindLibraryFilesByName(c.Request().Context(), name)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
