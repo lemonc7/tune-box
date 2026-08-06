@@ -30,20 +30,35 @@ type Music struct {
 	store       *database.Store
 	downloadDir string
 	logger      *slog.Logger
-	queue       chan int64
-	workers     int
+	queue       chan int64 // 等待worker处理的任务队列
+	workers     int        // 同时运行的下载worker数量
 	ctx         context.Context
 	stop        context.CancelFunc
-	wait        sync.WaitGroup
-	runningMu   sync.Mutex
-	running     map[int64]context.CancelFunc
+	wait        sync.WaitGroup               // 等待所有worker安全退出
+	runningMu   sync.Mutex                   // 保护running map
+	running     map[int64]context.CancelFunc // 保存只在执行任务的取消函数
 }
 
 // NewMusic 创建供 REST 和 MCP 共用的音乐业务服务。
-func NewMusic(registry *provider.Registry, downloader *download.Downloader, embedder *tag.Embedder, store *database.Store, downloadDir string, workers int, logger *slog.Logger) *Music {
+func NewMusic(
+	registry *provider.Registry,
+	downloader *download.Downloader,
+	embedder *tag.Embedder,
+	store *database.Store,
+	downloadDir string,
+	workers int,
+	logger *slog.Logger,
+) *Music {
 	return &Music{
-		registry: registry, downloader: downloader, embedder: embedder, store: store, downloadDir: downloadDir,
-		workers: workers, logger: logger, queue: make(chan int64, 1024), running: make(map[int64]context.CancelFunc),
+		registry:    registry,
+		downloader:  downloader,
+		embedder:    embedder,
+		store:       store,
+		downloadDir: downloadDir,
+		workers:     workers,
+		logger:      logger,
+		queue:       make(chan int64, 1024),
+		running:     make(map[int64]context.CancelFunc),
 	}
 }
 
@@ -57,9 +72,9 @@ func (s *Music) Start(ctx context.Context) error {
 		return err
 	}
 	s.ctx, s.stop = context.WithCancel(context.Background())
+
 	for i := 0; i < s.workers; i++ {
-		s.wait.Add(1)
-		go s.worker()
+		s.wait.Go(s.worker)
 	}
 	for _, id := range ids {
 		s.queue <- id
@@ -113,9 +128,15 @@ func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.
 		name = req.Provider + "-" + req.TrackID
 	}
 	row, created, err := s.store.CreateDownload(ctx, database.CreateDownloadParams{
-		Provider: req.Provider, TrackID: req.TrackID, Quality: req.Quality,
-		Name: name, FileName: req.FileName, Artists: req.Artists, Album: req.Album,
-		DurationMS: req.DurationMS, CoverURL: req.CoverURL,
+		Provider:   req.Provider,
+		TrackID:    req.TrackID,
+		Quality:    req.Quality,
+		Name:       name,
+		FileName:   req.FileName,
+		Artists:    req.Artists,
+		Album:      req.Album,
+		DurationMS: req.DurationMS,
+		CoverURL:   req.CoverURL,
 	})
 	if err != nil {
 		return model.DownloadTaskResult{}, fmt.Errorf("create download task: %w", err)
@@ -133,7 +154,6 @@ func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.
 }
 
 func (s *Music) worker() {
-	defer s.wait.Done()
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -424,10 +444,17 @@ func (s *Music) ListLibrary(ctx context.Context, limit int64) ([]model.LibraryFi
 	result := make([]model.LibraryFile, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, model.LibraryFile{
-			ID: row.ID, MusicID: row.MusicID, Path: row.Path, FileName: row.FileName,
-			Extension: row.Extension, Size: row.Size, ModifiedAt: row.ModifiedAt,
-			Provider: row.Provider, TrackID: row.TrackID, MusicName: row.MusicName,
-			Album: row.MusicAlbum,
+			ID:         row.ID,
+			MusicID:    row.MusicID,
+			Path:       row.Path,
+			FileName:   row.FileName,
+			Extension:  row.Extension,
+			Size:       row.Size,
+			ModifiedAt: row.ModifiedAt,
+			Provider:   row.Provider,
+			TrackID:    row.TrackID,
+			MusicName:  row.MusicName,
+			Album:      row.MusicAlbum,
 		})
 	}
 	return result, nil
@@ -479,8 +506,11 @@ func (s *Music) failDownload(id int64, cause error) {
 func libraryFile(path string, info fs.FileInfo) database.LibraryFileParams {
 	absPath, _ := filepath.Abs(path)
 	return database.LibraryFileParams{
-		Path: absPath, FileName: info.Name(), Extension: strings.TrimPrefix(strings.ToLower(filepath.Ext(info.Name())), "."),
-		Size: info.Size(), Modified: info.ModTime().UTC().Format(time.RFC3339Nano),
+		Path:      absPath,
+		FileName:  info.Name(),
+		Extension: strings.TrimPrefix(strings.ToLower(filepath.Ext(info.Name())), "."),
+		Size:      info.Size(),
+		Modified:  info.ModTime().UTC().Format(time.RFC3339Nano),
 	}
 }
 

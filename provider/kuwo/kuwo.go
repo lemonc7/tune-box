@@ -93,23 +93,35 @@ func (p *Provider) Search(ctx context.Context, query string, page, limit int) (m
 		id := strings.TrimPrefix(item.MusicRID, "MUSIC_")
 		trackQualities := parseQualities(item.NMusicInfo, item.Format)
 		tracks = append(tracks, model.Track{
-			ID: id, Provider: p.Name(), Name: item.Name,
-			Artists: splitNonEmpty(item.Artist, "&"), ArtistIDs: splitNonEmpty(item.AllArtistID, "&"),
-			Album: item.Album, AlbumID: item.AlbumID,
-			CoverURL: coverURL(item.AlbumPicShort), DurationMS: durationMillis(item.Duration),
-			Qualities: trackQualities,
+			ID:         id,
+			Provider:   p.Name(),
+			Name:       item.Name,
+			Artists:    splitNonEmpty(item.Artist, "&"),
+			ArtistIDs:  splitNonEmpty(item.AllArtistID, "&"),
+			Album:      item.Album,
+			AlbumID:    item.AlbumID,
+			CoverURL:   coverURL(item.AlbumPicShort),
+			DurationMS: durationMillis(item.Duration),
+			Qualities:  trackQualities,
 		})
 	}
 
-	return model.SearchResult{Provider: p.Name(), Query: query, Page: page, Limit: limit, Total: flexibleInt(payload.Total), Tracks: tracks}, nil
+	return model.SearchResult{
+		Provider: p.Name(),
+		Query:    query,
+		Page:     page,
+		Limit:    limit,
+		Total:    flexibleInt(payload.Total),
+		Tracks:   tracks,
+	}, nil
 }
 
 type resolveResponse struct {
 	Code int `json:"code"`
 	Data struct {
-		URL     string      `json:"url"`
-		Format  string      `json:"format"`
-		Bitrate interface{} `json:"bitrate"`
+		URL     string `json:"url"`
+		Format  string `json:"format"`
+		Bitrate any    `json:"bitrate"`
 	} `json:"data"`
 }
 
@@ -144,7 +156,23 @@ func (p *Provider) Resolve(ctx context.Context, trackID, qualityID string) (mode
 		return model.Resource{}, fmt.Errorf("Kuwo returned no resource URL; the track may require permission or the endpoint changed")
 	}
 
-	return model.Resource{Provider: p.Name(), TrackID: trackID, Quality: quality, URL: payload.Data.URL, Headers: map[string]string{"User-Agent": userAgent}}, nil
+	return model.Resource{
+		Provider: p.Name(),
+		TrackID:  trackID,
+		Quality:  quality,
+		URL:      payload.Data.URL,
+		Headers:  map[string]string{"User-Agent": userAgent},
+	}, nil
+}
+
+type lyricPayload struct {
+	Code int `json:"code"`
+	Data struct {
+		Lines []struct {
+			Text string `json:"lineLyric"`
+			Time string `json:"time"`
+		} `json:"lrclist"`
+	} `json:"data"`
 }
 
 // Metadata 获取酷我的时间轴歌词和 500px 专辑封面。
@@ -154,15 +182,8 @@ func (p *Provider) Metadata(ctx context.Context, trackID string) (model.MusicMet
 	values := lyricEndpoint.Query()
 	values.Set("musicId", trackID)
 	lyricEndpoint.RawQuery = values.Encode()
-	var lyricPayload struct {
-		Code int `json:"code"`
-		Data struct {
-			Lines []struct {
-				Text string `json:"lineLyric"`
-				Time string `json:"time"`
-			} `json:"lrclist"`
-		} `json:"data"`
-	}
+	
+	var lyricPayload lyricPayload
 	var lyricErr error
 	if err := p.getJSON(ctx, lyricEndpoint.String(), &lyricPayload); err != nil {
 		lyricErr = err
@@ -193,6 +214,7 @@ func (p *Provider) Metadata(ctx context.Context, trackID string) (model.MusicMet
 	values.Set("rid", trackID)
 	values.Set("jfencv", "user,android_id")
 	coverEndpoint.RawQuery = values.Encode()
+
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, coverEndpoint.String(), nil)
 	req.Header.Set("User-Agent", userAgent)
 	resp, coverErr := p.client.Do(req)
@@ -208,8 +230,8 @@ func (p *Provider) Metadata(ctx context.Context, trackID string) (model.MusicMet
 				coverErr = errors.New("Kuwo cover URL is too long")
 			} else {
 				metadata.CoverURL = strings.TrimSpace(string(body))
-				if strings.HasPrefix(metadata.CoverURL, "http://") {
-					metadata.CoverURL = "https://" + strings.TrimPrefix(metadata.CoverURL, "http://")
+				if after, ok := strings.CutPrefix(metadata.CoverURL, "http://"); ok {
+					metadata.CoverURL = "https://" + after
 				}
 			}
 		}

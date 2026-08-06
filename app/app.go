@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 	"github.com/lemonc7/tune-go/api"
+	"github.com/lemonc7/tune-go/assets"
 	"github.com/lemonc7/tune-go/config"
 	"github.com/lemonc7/tune-go/database"
 	"github.com/lemonc7/tune-go/download"
@@ -26,12 +27,10 @@ import (
 
 // App 保存 HTTP 服务及其需要在退出时释放的资源。
 type App struct {
-	echo            *echo.Echo
-	logger          *slog.Logger
-	resourceHandler *api.ResourceHandler
-	music           *service.Music
-	web             *web.Handler
-	store           *database.Store
+	echo   *echo.Echo
+	logger *slog.Logger
+	music  *service.Music
+	store  *database.Store
 }
 
 // New 创建应用并完成中间件、音乐源、数据库、下载器和路由的组装。
@@ -124,16 +123,13 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	}
 
 	app := &App{
-		echo:            e,
-		logger:          logger,
-		resourceHandler: &api.ResourceHandler{Music: musicService},
-		music:           musicService,
-		web: &web.Handler{
-			Music: musicService,
-		},
-		store: store,
+		echo:   e,
+		logger: logger,
+		music:  musicService,
+		store:  store,
 	}
-	app.initRouter()
+
+	app.initRouter(musicService)
 
 	return app, nil
 }
@@ -150,46 +146,49 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // initRouter 注册健康检查、MCP 和 REST API 路由。
-func (a *App) initRouter() {
+func (a *App) initRouter(service *service.Music) {
+	resource := &api.ResourceHandler{Music: service}
+	web := &web.Handler{Music: service}
+
 	a.echo.GET("/health", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "Welcome to TuneGo")
 	})
 
 	a.echo.Any("/mcp", echo.WrapHandler(mcp.New(
-		a.resourceHandler.Music,
+		resource.Music,
 		a.logger,
 	)))
 
-	group := a.echo.Group("/api")
-	group.GET("/providers", a.resourceHandler.Providers)
-	group.GET("/search", a.resourceHandler.Search)
-	group.POST("/resolve", a.resourceHandler.Resolve)
-	group.POST("/download", a.resourceHandler.Download)
-	group.GET("/downloads", a.resourceHandler.Downloads)
-	group.POST("/downloads/:id/pause", a.resourceHandler.PauseDownload)
-	group.POST("/downloads/:id/resume", a.resourceHandler.ResumeDownload)
-	group.POST("/downloads/:id/cancel", a.resourceHandler.CancelDownload)
-	group.POST("/downloads/:id/retry", a.resourceHandler.RetryDownload)
-	group.DELETE("/downloads/:id", a.resourceHandler.DeleteDownload)
-	group.GET("/library", a.resourceHandler.Library)
-	group.POST("/library/scan", a.resourceHandler.ScanLibrary)
+	api := a.echo.Group("/api")
+	api.GET("/providers", resource.Providers)
+	api.GET("/search", resource.Search)
+	api.POST("/resolve", resource.Resolve)
+	api.POST("/download", resource.Download)
+	api.GET("/downloads", resource.Downloads)
+	api.POST("/downloads/:id/pause", resource.PauseDownload)
+	api.POST("/downloads/:id/resume", resource.ResumeDownload)
+	api.POST("/downloads/:id/cancel", resource.CancelDownload)
+	api.POST("/downloads/:id/retry", resource.RetryDownload)
+	api.DELETE("/downloads/:id", resource.DeleteDownload)
+	api.GET("/library", resource.Library)
+	api.POST("/library/scan", resource.ScanLibrary)
 
 	// 完整页面
-	a.echo.GET("/", a.web.Home)
-	a.echo.GET("/downloads", a.web.DownloadsPage)
-	a.echo.GET("/library", a.web.LibraryPage)
+	a.echo.GET("/", web.Home)
+	a.echo.GET("/downloads", web.DownloadsPage)
+	a.echo.GET("/library", web.LibraryPage)
 
-	web := a.echo.Group("/web")
-	web.GET("/search", a.web.Search)
-	web.POST("/resolve", a.web.Resolve)
+	wg := a.echo.Group("/web")
+	wg.GET("/search", web.Search)
+	wg.POST("/resolve", web.Resolve)
 
-	web.GET("/downloads", a.web.DownloadList)
-	web.POST("/downloads", a.web.CreateDownload)
-	web.POST("/downloads/:id/pause", a.web.PauseDownload)
-	web.POST("/downloads/:id/resume", a.web.ResumeDownload)
-	web.POST("/downloads/:id/cancel", a.web.CancelDownload)
-	web.POST("/downloads/:id/retry", a.web.RetryDownload)
-	web.POST("/library/scan", a.web.ScanLibrary)
+	wg.GET("/downloads", web.DownloadList)
+	wg.POST("/downloads", web.CreateDownload)
+	wg.POST("/downloads/:id/pause", web.PauseDownload)
+	wg.POST("/downloads/:id/resume", web.ResumeDownload)
+	wg.POST("/downloads/:id/cancel", web.CancelDownload)
+	wg.POST("/downloads/:id/retry", web.RetryDownload)
+	wg.POST("/library/scan", web.ScanLibrary)
 
-	a.echo.Static("/assets", "assets")
+	a.echo.StaticFS("/assets", assets.Assets)
 }

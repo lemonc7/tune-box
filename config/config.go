@@ -22,7 +22,7 @@ type Config struct {
 type ServerConfig struct {
 	Port            int           `yaml:"port" env:"PORT" env-default:"8080"`
 	HTTPTimeout     time.Duration `yaml:"http_timeout" env:"HTTP_TIMEOUT" env-default:"30s"`
-	DownloadTimeout time.Duration `yaml:"download_timeout" env:"DOWNLOAD_TIMEOUT" env-default:"2m"`
+	DownloadTimeout time.Duration `yaml:"download_timeout" env:"DOWNLOAD_TIMEOUT" env-default:"30m"`
 }
 
 // DownloadConfig 控制文件保存位置和允许下载的单文件上限。

@@ -1,7 +1,7 @@
 server:
   port: 8080
   http_timeout: 30s
-  download_timeout: 2m
+  download_timeout: 30m
 
 database:
   path: ./data/tune-go.db

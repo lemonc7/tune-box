@@ -46,7 +46,7 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, opti
 	// 下载地址只能来自 Provider，并且必须是合法的 HTTP(S) 地址。
 	resourceURL, err := url.Parse(resource.URL)
 	if err != nil || (resourceURL.Scheme != "http" && resourceURL.Scheme != "https") || resourceURL.Hostname() == "" {
-		return model.DownloadResult{}, errors.New("provider returned an invalid resource URL")
+		return model.DownloadResult{}, fmt.Errorf("provider returned an invalid resource URL")
 	}
 	if err := os.MkdirAll(d.dir, 0o755); err != nil {
 		return model.DownloadResult{}, err
@@ -61,6 +61,7 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, opti
 		name += extension
 	}
 	target := filepath.Join(d.dir, name)
+
 	// 固定的临时文件名既不会被曲库扫描，也能让暂停和异常任务断点续传。
 	tempName := d.partialPath(options.TaskID)
 	temp, err := os.OpenFile(tempName, os.O_CREATE|os.O_RDWR, 0o644)
@@ -79,6 +80,7 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, opti
 		}
 		return d.finalize(ctx, tempName, target, name, "audio/"+resource.Quality.Format, resource, options)
 	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resource.URL, nil)
 	if err != nil {
 		return model.DownloadResult{}, err
@@ -89,6 +91,7 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, opti
 	if offset > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
+
 	resp, err := d.client.Do(req)
 	if err != nil {
 		return model.DownloadResult{}, fmt.Errorf("download resource: %w", err)
@@ -113,7 +116,7 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, opti
 	if mediaType == "text/html" || mediaType == "application/json" || strings.HasPrefix(mediaType, "text/") {
 		return model.DownloadResult{}, fmt.Errorf("resource server returned %s instead of audio", contentType)
 	}
-	total := int64(0)
+	var total int64 = 0
 	if resp.ContentLength >= 0 {
 		total = offset + resp.ContentLength
 	}
@@ -156,7 +159,7 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, opti
 		}
 	}
 	if downloaded == 0 {
-		return model.DownloadResult{}, errors.New("downloaded resource is empty")
+		return model.DownloadResult{}, fmt.Errorf("downloaded resource is empty")
 	}
 	if total > 0 && downloaded != total {
 		return model.DownloadResult{}, fmt.Errorf("incomplete download: expected %d bytes, received %d", total, downloaded)
@@ -170,7 +173,12 @@ func (d *Downloader) Download(ctx context.Context, resource model.Resource, opti
 	return d.finalize(ctx, tempName, target, name, contentType, resource, options)
 }
 
-func (d *Downloader) finalize(ctx context.Context, tempName, target, name, contentType string, resource model.Resource, options Options) (model.DownloadResult, error) {
+func (d *Downloader) finalize(
+	ctx context.Context,
+	tempName, target, name, contentType string,
+	resource model.Resource,
+	options Options,
+) (model.DownloadResult, error) {
 	if resource.Quality.Format == "flac" {
 		file, err := os.Open(tempName)
 		if err != nil {
@@ -180,14 +188,16 @@ func (d *Downloader) finalize(ctx context.Context, tempName, target, name, conte
 		n, _ := file.Read(header)
 		file.Close()
 		if !bytes.Contains(header[:n], []byte("fLaC")) {
-			return model.DownloadResult{}, errors.New("resource is not a valid FLAC stream")
+			return model.DownloadResult{}, fmt.Errorf("resource is not a valid FLAC stream")
 		}
 	}
+
 	if options.BeforeFinalize != nil {
 		if err := options.BeforeFinalize(ctx, tempName); err != nil {
 			return model.DownloadResult{}, err
 		}
 	}
+
 	// 硬链接操作具有排他性，不会覆盖用户目录中已经存在的同名文件。
 	if err := os.Link(tempName, target); err != nil {
 		if errors.Is(err, os.ErrExist) {
@@ -204,7 +214,12 @@ func (d *Downloader) finalize(ctx context.Context, tempName, target, name, conte
 	if err != nil {
 		return model.DownloadResult{}, err
 	}
-	return model.DownloadResult{Path: absolute, FileName: name, Size: info.Size(), ContentType: contentType}, nil
+	return model.DownloadResult{
+		Path:        absolute,
+		FileName:    name,
+		Size:        info.Size(),
+		ContentType: contentType,
+	}, nil
 }
 
 // RemovePartial 删除取消或删除任务遗留的断点文件。

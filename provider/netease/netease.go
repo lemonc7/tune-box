@@ -45,7 +45,7 @@ func New(client *http.Client, baseURL, cookie, extendedURL string) *Provider {
 }
 
 func (p *Provider) Name() string    { return "netease" }
-func (p *Provider) Available() bool { return p.baseURL != "" }
+func (p *Provider) Available() bool { return p.baseURL != "" || p.extendedURL != "" }
 
 type audio struct {
 	Bitrate int64 `json:"br"`
@@ -109,15 +109,27 @@ func (p *Provider) Search(ctx context.Context, query string, page, limit int) (m
 			artistIDs = append(artistIDs, strconv.FormatInt(entry.ID, 10))
 		}
 		tracks = append(tracks, model.Track{
-			ID: strconv.FormatInt(item.ID, 10), Provider: p.Name(), Name: item.Name,
-			Artists: artistNames, ArtistIDs: artistIDs,
-			Album: item.Album.Name, AlbumID: strconv.FormatInt(item.Album.ID, 10),
-			CoverURL: item.Album.PicURL, DurationMS: item.Duration,
-			Qualities: songQualities(item),
+			ID:         strconv.FormatInt(item.ID, 10),
+			Provider:   p.Name(),
+			Name:       item.Name,
+			Artists:    artistNames,
+			ArtistIDs:  artistIDs,
+			Album:      item.Album.Name,
+			AlbumID:    strconv.FormatInt(item.Album.ID, 10),
+			CoverURL:   item.Album.PicURL,
+			DurationMS: item.Duration,
+			Qualities:  songQualities(item),
 		})
 	}
 
-	return model.SearchResult{Provider: p.Name(), Query: query, Page: page, Limit: limit, Total: payload.Result.Total, Tracks: tracks}, nil
+	return model.SearchResult{
+		Provider: p.Name(),
+		Query:    query,
+		Page:     page,
+		Limit:    limit,
+		Total:    payload.Result.Total,
+		Tracks:   tracks,
+	}, nil
 }
 
 func (p *Provider) Resolve(ctx context.Context, trackID, qualityID string) (model.Resource, error) {
@@ -137,18 +149,31 @@ func (p *Provider) Resolve(ctx context.Context, trackID, qualityID string) (mode
 	if strings.TrimSpace(resourceURL) == "" {
 		return model.Resource{}, fmt.Errorf("Netease returned no resource URL; check account permission and API compatibility")
 	}
-	return model.Resource{Provider: p.Name(), TrackID: trackID, Quality: quality, URL: resourceURL, Headers: p.resourceHeaders()}, nil
+	return model.Resource{
+		Provider: p.Name(),
+		TrackID:  trackID,
+		Quality:  quality,
+		URL:      resourceURL,
+		Headers:  p.resourceHeaders(),
+	}, nil
+}
+
+type lyricPayload struct {
+	Code int `json:"code"`
+	LRC  struct {
+		Lyric string `json:"lyric"`
+	} `json:"lrc"`
+}
+
+type detailPayload struct {
+	Code  int    `json:"code"`
+	Songs []song `json:"songs"`
 }
 
 // Metadata 从自建网易 API 获取歌曲详情和原始 LRC 时间轴歌词。
 func (p *Provider) Metadata(ctx context.Context, trackID string) (model.MusicMetadata, error) {
 	metadata := model.MusicMetadata{}
-	var lyricPayload struct {
-		Code int `json:"code"`
-		LRC  struct {
-			Lyric string `json:"lyric"`
-		} `json:"lrc"`
-	}
+	var lyricPayload lyricPayload
 	lyricErr := p.postAPI(ctx, "/lyric", map[string]any{"id": trackID}, &lyricPayload)
 	if lyricErr == nil {
 		if lyricPayload.Code != 0 && lyricPayload.Code != http.StatusOK {
@@ -158,10 +183,7 @@ func (p *Provider) Metadata(ctx context.Context, trackID string) (model.MusicMet
 		}
 	}
 
-	var detailPayload struct {
-		Code  int    `json:"code"`
-		Songs []song `json:"songs"`
-	}
+	var detailPayload detailPayload
 	detailErr := p.postAPI(ctx, "/song/detail", map[string]any{"ids": trackID}, &detailPayload)
 	if detailErr == nil {
 		if detailPayload.Code != 0 && detailPayload.Code != http.StatusOK {

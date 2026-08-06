@@ -45,12 +45,13 @@ func (e *Embedder) EmbedFLAC(ctx context.Context, path string, metadata model.Mu
 	if strings.TrimSpace(metadata.CoverURL) != "" {
 		u, err := url.Parse(metadata.CoverURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
-			return errors.New("provider returned an invalid cover URL")
+			return fmt.Errorf("provider returned an invalid cover URL")
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 		if err != nil {
 			return err
 		}
+
 		resp, err := e.client.Do(req)
 		if err != nil {
 			return fmt.Errorf("download cover: %w", err)
@@ -59,12 +60,13 @@ func (e *Embedder) EmbedFLAC(ctx context.Context, path string, metadata model.Mu
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return fmt.Errorf("cover server returned HTTP %d", resp.StatusCode)
 		}
+
 		cover, err = io.ReadAll(io.LimitReader(resp.Body, maxCoverBytes+1))
 		if err != nil {
 			return fmt.Errorf("read cover: %w", err)
 		}
 		if len(cover) == 0 || len(cover) > maxCoverBytes {
-			return errors.New("cover is empty or exceeds 5 MiB")
+			return fmt.Errorf("cover is empty or exceeds 5 MiB")
 		}
 		coverType, _, _ = mime.ParseMediaType(resp.Header.Get("Content-Type"))
 		if coverType == "" || coverType == "application/octet-stream" {
@@ -83,31 +85,38 @@ func (e *Embedder) EmbedFLAC(ctx context.Context, path string, metadata model.Mu
 	reader := bufio.NewReader(input)
 	magic := make([]byte, 4)
 	if _, err := io.ReadFull(reader, magic); err != nil || string(magic) != "fLaC" {
-		return errors.New("file is not a valid FLAC stream")
+		return fmt.Errorf("file is not a valid FLAC stream")
 	}
 
+	// 保存需要继续写回的metadata block
 	blocks := make([]flacBlock, 0, 8)
 	vendor := "TuneGo"
+	// 原有文字标签
 	comments := make([]string, 0, 16)
 	for {
 		header := make([]byte, 4)
 		if _, err := io.ReadFull(reader, header); err != nil {
 			return fmt.Errorf("read FLAC metadata header: %w", err)
 		}
+		// 第1字节：记录是否为最后一个block(最高位)和block类型(低7位)
 		last := header[0]&0x80 != 0
 		typeID := header[0] & 0x7f
+		// 第2~4字节，记录长度
 		length := int(header[1])<<16 | int(header[2])<<8 | int(header[3])
+		// 读取block内容
 		data := make([]byte, length)
 		if _, err := io.ReadFull(reader, data); err != nil {
 			return fmt.Errorf("read FLAC metadata block: %w", err)
 		}
 		switch typeID {
+		// Vorbis Comment
 		case 4:
 			parsedVendor, parsedComments, err := parseVorbisComment(data)
 			if err != nil {
 				return err
 			}
 			vendor, comments = parsedVendor, parsedComments
+		// Picture
 		case 6:
 			if len(cover) == 0 {
 				blocks = append(blocks, flacBlock{typeID: typeID, data: data})
@@ -120,7 +129,7 @@ func (e *Embedder) EmbedFLAC(ctx context.Context, path string, metadata model.Mu
 		}
 	}
 	if len(blocks) == 0 || blocks[0].typeID != 0 || len(blocks[0].data) != 34 {
-		return errors.New("FLAC STREAMINFO block is missing or invalid")
+		return fmt.Errorf("FLAC STREAMINFO block is missing or invalid")
 	}
 
 	replacements := map[string]string{
@@ -177,7 +186,7 @@ func (e *Embedder) EmbedFLAC(ctx context.Context, path string, metadata model.Mu
 	for index, block := range blocks {
 		if len(block.data) > maxBlockBytes {
 			temp.Close()
-			return errors.New("FLAC metadata block exceeds 24-bit size limit")
+			return fmt.Errorf("FLAC metadata block exceeds 24-bit size limit")
 		}
 		header := []byte{block.typeID, byte(len(block.data) >> 16), byte(len(block.data) >> 8), byte(len(block.data))}
 		if index == len(blocks)-1 {
@@ -222,7 +231,7 @@ func parseVorbisComment(data []byte) (string, []string, error) {
 			return "", err
 		}
 		if uint64(length) > uint64(buffer.Len()) {
-			return "", errors.New("invalid FLAC Vorbis comment length")
+			return "", fmt.Errorf("invalid FLAC Vorbis comment length")
 		}
 		value := make([]byte, length)
 		_, err := io.ReadFull(buffer, value)
@@ -238,7 +247,7 @@ func parseVorbisComment(data []byte) (string, []string, error) {
 		return "", nil, fmt.Errorf("read FLAC Vorbis comment count: %w", err)
 	}
 	if uint64(count) > uint64(buffer.Len()/4) {
-		return "", nil, errors.New("invalid FLAC Vorbis comment count")
+		return "", nil, fmt.Errorf("invalid FLAC Vorbis comment count")
 	}
 	comments := make([]string, 0, count)
 	for i := uint32(0); i < count; i++ {
@@ -255,7 +264,7 @@ func buildVorbisComment(vendor string, comments []string) ([]byte, error) {
 	var buffer bytes.Buffer
 	writeString := func(value string) error {
 		if len(value) > maxBlockBytes {
-			return errors.New("FLAC Vorbis comment is too large")
+			return fmt.Errorf("FLAC Vorbis comment is too large")
 		}
 		if err := binary.Write(&buffer, binary.LittleEndian, uint32(len(value))); err != nil {
 			return err
