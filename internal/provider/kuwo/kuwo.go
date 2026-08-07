@@ -88,26 +88,31 @@ func (p *Provider) Search(ctx context.Context, query string, page, limit int) (m
 		return model.SearchResult{}, err
 	}
 
-	albumDates := make(map[string]string, len(payload.AbsList))
+	albumInfos := make(map[string]albumInfo, len(payload.AbsList))
 	for _, item := range payload.AbsList {
 		if item.AlbumID == "" {
 			continue
 		}
-		if _, ok := albumDates[item.AlbumID]; ok {
+		if _, ok := albumInfos[item.AlbumID]; ok {
 			continue
 		}
-		date, err := p.albumDate(ctx, item.AlbumID)
+		info, err := p.fetchAlbumInfo(ctx, item.AlbumID)
 		if err != nil {
-			albumDates[item.AlbumID] = ""
+			albumInfos[item.AlbumID] = albumInfo{}
 			continue
 		}
-		albumDates[item.AlbumID] = strings.TrimSpace(date)
+		albumInfos[item.AlbumID] = info
 	}
 
 	tracks := make([]model.Track, 0, len(payload.AbsList))
 	for _, item := range payload.AbsList {
 		id := strings.TrimPrefix(item.MusicRID, "MUSIC_")
 		trackQualities := parseQualities(item.NMusicInfo, item.Format)
+		info := albumInfos[item.AlbumID]
+		albumArtist := info.artist
+		if albumArtist == "" {
+			albumArtist = item.AlbumArtist
+		}
 		tracks = append(tracks, model.Track{
 			ID:          id,
 			Provider:    p.Name(),
@@ -116,8 +121,8 @@ func (p *Provider) Search(ctx context.Context, query string, page, limit int) (m
 			ArtistIDs:   splitNonEmpty(item.AllArtistID, "&"),
 			Album:       item.Album,
 			AlbumID:     item.AlbumID,
-			AlbumArtist: item.AlbumArtist,
-			Date:        albumDates[item.AlbumID],
+			AlbumArtist: albumArtist,
+			Date:        info.date,
 			CoverURL:    coverURL(item.AlbumPicShort),
 			DurationMS:  durationMillis(item.Duration),
 			Qualities:   trackQualities,
@@ -173,6 +178,7 @@ func (p *Provider) Resolve(ctx context.Context, trackID, qualityID string) (mode
 	if strings.TrimSpace(payload.Data.URL) == "" {
 		return model.Resource{}, fmt.Errorf("Kuwo returned no resource URL; the track may require permission or the endpoint changed")
 	}
+
 
 	return model.Resource{
 		Provider: p.Name(),
@@ -235,10 +241,15 @@ type albumInfoResponse struct {
 	Artist string `json:"artist"`
 }
 
-func (p *Provider) albumDate(ctx context.Context, albumID string) (string, error) {
+type albumInfo struct {
+	date   string
+	artist string
+}
+
+func (p *Provider) fetchAlbumInfo(ctx context.Context, albumID string) (albumInfo, error) {
 	u, err := url.Parse(p.searchURL)
 	if err != nil {
-		return "", fmt.Errorf("parse Kuwo album info URL: %w", err)
+		return albumInfo{}, fmt.Errorf("parse Kuwo album info URL: %w", err)
 	}
 	values := u.Query()
 	values.Set("pn", "1")
@@ -252,9 +263,12 @@ func (p *Provider) albumDate(ctx context.Context, albumID string) (string, error
 
 	var payload albumInfoResponse
 	if err := p.getJSON(ctx, u.String(), &payload); err != nil {
-		return "", err
+		return albumInfo{}, err
 	}
-	return strings.TrimSpace(payload.Pub), nil
+	return albumInfo{
+		date:   strings.TrimSpace(payload.Pub),
+		artist: strings.TrimSpace(payload.Artist),
+	}, nil
 }
 
 func (p *Provider) getJSON(ctx context.Context, endpoint string, target any) error {
