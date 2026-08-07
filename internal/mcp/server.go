@@ -27,7 +27,7 @@ type providersOutput struct {
 }
 
 type searchInput struct {
-	Provider string `json:"provider" jsonschema:"音乐源名称，目前支持 kuwo 和 netease"`
+	Provider string `json:"provider" jsonschema:"音乐源名称，目前支持 kuwo"`
 	Query    string `json:"query" jsonschema:"歌曲名、歌手名或专辑名"`
 	Page     int    `json:"page,omitempty" jsonschema:"页码，默认为 1，最大为 10000"`
 	Limit    int    `json:"limit,omitempty" jsonschema:"每页数量，默认为 20，最大为 100"`
@@ -38,7 +38,7 @@ type searchOutput struct {
 }
 
 type resolveInput struct {
-	Provider string `json:"provider" jsonschema:"音乐源名称，目前支持 kuwo 和 netease"`
+	Provider string `json:"provider" jsonschema:"音乐源名称，目前支持 kuwo"`
 	TrackID  string `json:"trackId" jsonschema:"搜索结果中的歌曲 ID"`
 	Quality  string `json:"quality" jsonschema:"搜索结果中的音质 ID，例如 2000kflac 或 lossless"`
 }
@@ -47,15 +47,17 @@ type resolveOutput struct {
 }
 
 type downloadInput struct {
-	Provider   string   `json:"provider" jsonschema:"音乐源名称，目前支持 kuwo 和 netease"`
-	TrackID    string   `json:"trackId" jsonschema:"搜索结果中的歌曲 ID"`
-	Quality    string   `json:"quality" jsonschema:"搜索结果中的音质 ID，例如 2000kflac 或 lossless"`
-	FileName   string   `json:"fileName,omitempty" jsonschema:"可选的保存文件名，不需要包含扩展名"`
-	Name       string   `json:"name,omitempty" jsonschema:"搜索结果中的歌曲名，用于保存曲库信息"`
-	Artists    []string `json:"artists,omitempty" jsonschema:"搜索结果中的歌手列表，用于保存曲库信息"`
-	Album      string   `json:"album,omitempty" jsonschema:"搜索结果中的专辑名"`
-	CoverURL   string   `json:"coverUrl,omitempty" jsonschema:"搜索结果中的封面地址"`
-	DurationMS int64    `json:"durationMs,omitempty" jsonschema:"搜索结果中的歌曲时长，单位毫秒"`
+	Provider    string   `json:"provider" jsonschema:"音乐源名称，目前支持 kuwo"`
+	TrackID     string   `json:"trackId" jsonschema:"搜索结果中的歌曲 ID"`
+	Quality     string   `json:"quality" jsonschema:"搜索结果中的音质 ID，例如 2000kflac 或 lossless"`
+	FileName    string   `json:"fileName,omitempty" jsonschema:"可选的保存文件名，不需要包含扩展名"`
+	Name        string   `json:"name,omitempty" jsonschema:"搜索结果中的歌曲名，用于保存曲库信息"`
+	Artists     []string `json:"artists,omitempty" jsonschema:"搜索结果中的歌手列表，用于保存曲库信息"`
+	Album       string   `json:"album,omitempty" jsonschema:"搜索结果中的专辑名"`
+	AlbumArtist string   `json:"albumArtist,omitempty" jsonschema:"专辑艺术家"`
+	Date        string   `json:"date,omitempty" jsonschema:"发行日期"`
+	CoverURL    string   `json:"coverUrl,omitempty" jsonschema:"搜索结果中的封面地址"`
+	DurationMS  int64    `json:"durationMs,omitempty" jsonschema:"搜索结果中的歌曲时长，单位毫秒"`
 }
 type downloadOutput struct {
 	Result model.DownloadTaskResult `json:"result"`
@@ -191,10 +193,12 @@ func (s *Server) downloadMusic(ctx context.Context, _ *protocol.CallToolRequest,
 			Quality:  input.Quality,
 		},
 		Metadata: model.MusicMetadata{
-			Name:     input.Name,
-			Artists:  input.Artists,
-			Album:    input.Album,
-			CoverURL: input.CoverURL,
+			Name:        input.Name,
+			Artists:     input.Artists,
+			Album:       input.Album,
+			AlbumArtist: input.AlbumArtist,
+			Date:        input.Date,
+			CoverURL:    input.CoverURL,
 		},
 	})
 	if err != nil {

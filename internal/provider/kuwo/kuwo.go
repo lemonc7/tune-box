@@ -15,10 +15,7 @@ import (
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 
-const (
-	lyricURL = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"
-	coverAPI = "https://artistpicserver.kuwo.cn/pic.web"
-)
+const lyricURL = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"
 
 // qualities 将对外使用的音质 ID 映射成统一音质模型。
 var qualities = map[string]model.Quality{
@@ -38,7 +35,11 @@ type Provider struct {
 
 // New 使用指定的酷我接口创建 Provider。
 func New(client *http.Client, searchURL, resolveURL string) *Provider {
-	return &Provider{client: client, searchURL: searchURL, resolveURL: resolveURL}
+	return &Provider{
+		client:     client,
+		searchURL:  searchURL,
+		resolveURL: resolveURL,
+	}
 }
 
 func (p *Provider) Name() string    { return "kuwo" }
@@ -51,6 +52,7 @@ type searchResponse struct {
 
 type searchTrack struct {
 	Album         string `json:"ALBUM"`
+	AlbumArtist   string `json:"AARTIST"`
 	AlbumID       string `json:"ALBUMID"`
 	Artist        string `json:"ARTIST"`
 	AllArtistID   string `json:"allartistid"`
@@ -86,21 +88,39 @@ func (p *Provider) Search(ctx context.Context, query string, page, limit int) (m
 		return model.SearchResult{}, err
 	}
 
+	albumDates := make(map[string]string, len(payload.AbsList))
+	for _, item := range payload.AbsList {
+		if item.AlbumID == "" {
+			continue
+		}
+		if _, ok := albumDates[item.AlbumID]; ok {
+			continue
+		}
+		date, err := p.albumDate(ctx, item.AlbumID)
+		if err != nil {
+			albumDates[item.AlbumID] = ""
+			continue
+		}
+		albumDates[item.AlbumID] = strings.TrimSpace(date)
+	}
+
 	tracks := make([]model.Track, 0, len(payload.AbsList))
 	for _, item := range payload.AbsList {
 		id := strings.TrimPrefix(item.MusicRID, "MUSIC_")
 		trackQualities := parseQualities(item.NMusicInfo, item.Format)
 		tracks = append(tracks, model.Track{
-			ID:         id,
-			Provider:   p.Name(),
-			Name:       item.Name,
-			Artists:    splitNonEmpty(item.Artist, "&"),
-			ArtistIDs:  splitNonEmpty(item.AllArtistID, "&"),
-			Album:      item.Album,
-			AlbumID:    item.AlbumID,
-			CoverURL:   coverURL(item.AlbumPicShort),
-			DurationMS: durationMillis(item.Duration),
-			Qualities:  trackQualities,
+			ID:          id,
+			Provider:    p.Name(),
+			Name:        item.Name,
+			Artists:     splitNonEmpty(item.Artist, "&"),
+			ArtistIDs:   splitNonEmpty(item.AllArtistID, "&"),
+			Album:       item.Album,
+			AlbumID:     item.AlbumID,
+			AlbumArtist: item.AlbumArtist,
+			Date:        albumDates[item.AlbumID],
+			CoverURL:    coverURL(item.AlbumPicShort),
+			DurationMS:  durationMillis(item.Duration),
+			Qualities:   trackQualities,
 		})
 	}
 
@@ -208,6 +228,33 @@ func (p *Provider) Lyrics(ctx context.Context, trackID string) (string, error) {
 	}
 
 	return strings.TrimSpace(lyrics.String()), nil
+}
+
+type albumInfoResponse struct {
+	Pub    string `json:"pub"`
+	Artist string `json:"artist"`
+}
+
+func (p *Provider) albumDate(ctx context.Context, albumID string) (string, error) {
+	u, err := url.Parse(p.searchURL)
+	if err != nil {
+		return "", fmt.Errorf("parse Kuwo album info URL: %w", err)
+	}
+	values := u.Query()
+	values.Set("pn", "1")
+	values.Set("rn", "1")
+	values.Set("albumid", albumID)
+	values.Set("stype", "albuminfo")
+	values.Set("showall", "0")
+	values.Set("pcjson", "1")
+	values.Set("encoding", "utf8")
+	u.RawQuery = values.Encode()
+
+	var payload albumInfoResponse
+	if err := p.getJSON(ctx, u.String(), &payload); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(payload.Pub), nil
 }
 
 func (p *Provider) getJSON(ctx context.Context, endpoint string, target any) error {

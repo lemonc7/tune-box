@@ -19,6 +19,8 @@ templ ResolveButton(track model.Track, quality model.Quality) {
 		<input type="hidden" name="quality" value={ quality.ID }/>
 		<input type="hidden" name="name" value={ track.Name }/>
 		<input type="hidden" name="album" value={ track.Album }/>
+		<input type="hidden" name="albumArtist" value={ track.AlbumArtist }/>
+		<input type="hidden" name="date" value={ track.Date }/>
 		<input type="hidden" name="durationMs" value={ fmt.Sprintf("%d", track.DurationMS) }/>
 		<input type="hidden" name="coverUrl" value={ track.CoverURL }/>
 		for _,artist := range track.Artists {
@@ -30,11 +32,13 @@ templ ResolveButton(track model.Track, quality model.Quality) {
 			class="cursor-pointer rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors"
 		>
 			<span>下载</span>{ " · " + quality.Label }
-			if quality.Format != "" {
-				<span>{ " · " + quality.Format }</span>
-			}
 		</button>
-		<span class="htmx-indicator hidden text-xs text-indigo-600">加入中...</span>
+		<span class="htmx-indicator inline-flex items-center gap-1 text-xs text-indigo-600">
+			<svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+			</svg>
+		</span>
 	</form>
 }
 
@@ -60,6 +64,8 @@ templ ResolveResource(request model.DownloadRequest, resource model.Resource) {
 			<input type="hidden" name="quality" value={ request.Quality }/>
 			<input type="hidden" name="name" value={ request.Metadata.Name }/>
 			<input type="hidden" name="album" value={ request.Metadata.Album }/>
+			<input type="hidden" name="albumArtist" value={ request.Metadata.AlbumArtist }/>
+			<input type="hidden" name="date" value={ request.Metadata.Date }/>
 			<input type="hidden" name="coverUrl" value={ request.Metadata.CoverURL }/>
 			for _,artist := range request.Metadata.Artists {
 				<input type="hidden" name="artists" value={ artist }/>

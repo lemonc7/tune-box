@@ -20,7 +20,6 @@ import (
 	"github.com/lemonc7/tune-go/internal/model"
 	"github.com/lemonc7/tune-go/internal/provider"
 	"github.com/lemonc7/tune-go/internal/provider/kuwo"
-	"github.com/lemonc7/tune-go/internal/provider/netease"
 	"github.com/lemonc7/tune-go/internal/repo"
 	"github.com/lemonc7/tune-go/internal/service"
 	"github.com/lemonc7/tune-go/internal/tag"
@@ -97,12 +96,6 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 			client,
 			cfg.Providers.Kuwo.SearchURL,
 			cfg.Providers.Kuwo.ResolveURL,
-		),
-		netease.New(
-			client,
-			cfg.Providers.Netease.BaseURL,
-			cfg.Providers.Netease.Cookie,
-			cfg.Providers.Netease.ExtendedResolveURL,
 		),
 	)
 	store, err := database.New(cfg.Database)

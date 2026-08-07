@@ -10,6 +10,12 @@ templ Layout(title string, content templ.Component) {
 			<link rel="icon" type="image/x-icon" href="/assets/favicon.ico"/>
 			<script src="/assets/htmx.min.js"></script>
 			<link rel="stylesheet" href="/assets/app.css"/>
+			<style>
+				.htmx-indicator{opacity:0;transition:opacity 200ms ease-in}
+				.htmx-request .htmx-indicator,.htmx-request.htmx-indicator{opacity:1}
+				@keyframes spin{to{transform:rotate(360deg)}}
+				.animate-spin{animation:spin .8s linear infinite}
+			</style>
 		</head>
 		<body hx-boost="true" class="min-h-screen bg-slate-50 text-slate-800 antialiased">
 			<header class="sticky top-0 z-10 border-b border-slate-200/60 bg-white/80 backdrop-blur-md">

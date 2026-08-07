@@ -20,7 +20,7 @@ import (
 
 var invalidFileChars = regexp.MustCompile(`[\\/:*?"<>|\x00-\x1f]`)
 
-const downloadDir = "download"
+const downloadDir = "downloads"
 
 // Downloader 负责将 Provider 给出的临时资源安全地保存到本地。
 type Downloader struct {

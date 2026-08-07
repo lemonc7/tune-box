@@ -79,7 +79,13 @@ templ SearchContent(
 					</span>
 				</label>
 				<div class="flex w-full items-center justify-end gap-3 sm:w-auto">
-					<span id="search-loading" class="htmx-indicator hidden text-sm text-indigo-600">搜索中...</span>
+					<span id="search-loading" class="htmx-indicator inline-flex items-center gap-1.5 text-sm text-indigo-600">
+						<svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+						</svg>
+						<span>搜索中...</span>
+					</span>
 					<button type="submit" class="cursor-pointer rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 transition-colors">搜索音乐</button>
 				</div>
 			</div>
@@ -107,66 +113,62 @@ templ SearchResults(result model.SearchResult, lossless bool) {
 			<span class="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-600">{ fmt.Sprintf("第 %d 页 · 共 %d 首", result.Page, result.Total) }</span>
 		</div>
 		for _,track := range result.Tracks {
-			<div class="mt-3 flex gap-3 rounded-xl border border-slate-200 bg-white p-4 transition-shadow hover:shadow-sm">
-				if track.CoverURL != "" {
-					<img src={ track.CoverURL } alt={ track.Name } width="72" height="72" loading="lazy" class="shrink-0 rounded-lg bg-slate-200 object-cover"/>
-				}
-				<div class="min-w-0 flex-1">
-					<h3 class="mb-1 font-semibold">{ track.Name }</h3>
-					<p class="mb-2 text-sm text-slate-500">{ strings.Join(track.Artists, " / ") }</p>
-					if track.Album != "" {
-						<p class="mb-2 text-xs text-slate-400">专辑: { track.Album }</p>
-					}
-					<div class="flex flex-wrap gap-2">
-						for _,quality := range track.Qualities {
-							@components.ResolveButton(track, quality)
-						}
-					</div>
-					<div class="download-feedback mt-2" id={ "resolve-" + track.Provider + "-" + track.ID }></div>
-				</div>
-			</div>
+			@trackCard(track)
 		}
-		@SearchPagination(result, lossless)
+		if result.Page*result.Limit < result.Total {
+			@searchSentinel(result, lossless, result.Page+1)
+		}
 	}
 }
 
-templ SearchPagination(result model.SearchResult, lossless bool) {
-	if totalPages(result) > 1 {
-		<div class="mt-4 flex items-center justify-center gap-3 border-t border-slate-200 pt-4">
-			if result.Page > 1 {
-				<a
-					href={ searchPageURL(result, lossless, result.Page-1) }
-					hx-get={ searchPageURL(result, lossless, result.Page-1) }
-					hx-target="#search-results"
-					hx-swap="innerHTML"
-					hx-push-url="true"
-					class="min-w-[5rem] rounded-lg bg-indigo-50 px-3 py-2 text-center text-sm font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors"
-				>上一页</a>
-			} else {
-				<span class="min-w-[5rem] rounded-lg bg-slate-100 px-3 py-2 text-center text-sm text-slate-400">上一页</span>
+templ SearchResultsAppend(result model.SearchResult, lossless bool) {
+	for _,track := range result.Tracks {
+		@trackCard(track)
+	}
+	if result.Page*result.Limit < result.Total {
+		@searchSentinel(result, lossless, result.Page+1)
+	}
+}
+
+templ trackCard(track model.Track) {
+	<div class="mt-3 flex gap-3 rounded-xl border border-slate-200 bg-white p-4 transition-shadow hover:shadow-sm">
+		if track.CoverURL != "" {
+			<img src={ track.CoverURL } alt={ track.Name } width="72" height="72" loading="lazy" class="shrink-0 rounded-lg bg-slate-200 object-cover"/>
+		}
+		<div class="min-w-0 flex-1">
+			<h3 class="mb-1 font-semibold">{ track.Name }</h3>
+			<p class="mb-2 text-sm text-slate-500">{ strings.Join(track.Artists, " / ") }</p>
+			if track.Album != "" {
+				<p class="mb-2 text-xs text-slate-400">专辑: { track.Album }</p>
 			}
-			<span class="text-sm font-bold text-slate-600 tabular-nums">{ fmt.Sprintf("%d / %d", result.Page, totalPages(result)) }</span>
-			if result.Page < totalPages(result) {
-				<a
-					href={ searchPageURL(result, lossless, result.Page+1) }
-					hx-get={ searchPageURL(result, lossless, result.Page+1) }
-					hx-target="#search-results"
-					hx-swap="innerHTML"
-					hx-push-url="true"
-					class="min-w-[5rem] rounded-lg bg-indigo-50 px-3 py-2 text-center text-sm font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors"
-				>下一页</a>
-			} else {
-				<span class="min-w-[5rem] rounded-lg bg-slate-100 px-3 py-2 text-center text-sm text-slate-400">下一页</span>
+			if track.Date != "" {
+				<p class="mb-2 text-xs text-slate-400">发行: { track.Date }</p>
 			}
+			<div class="flex flex-wrap gap-2">
+				for _,quality := range track.Qualities {
+					@components.ResolveButton(track, quality)
+				}
+			</div>
+			<div class="download-feedback mt-2" id={ "resolve-" + track.Provider + "-" + track.ID }></div>
 		</div>
-	}
+	</div>
 }
 
-func totalPages(result model.SearchResult) int {
-	if result.Limit <= 0 || result.Total <= 0 {
-		return 0
-	}
-	return (result.Total + result.Limit - 1) / result.Limit
+templ searchSentinel(result model.SearchResult, lossless bool, page int) {
+	<div
+		hx-get={ searchPageURL(result, lossless, page) }
+		hx-trigger="revealed once"
+		hx-swap="afterend"
+		class="mt-4 flex justify-center"
+	>
+		<span class="htmx-indicator inline-flex items-center gap-1.5 text-xs text-indigo-500">
+			<svg class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+			</svg>
+			<span>加载中...</span>
+		</span>
+	</div>
 }
 
 func searchPageURL(result model.SearchResult, lossless bool, page int) string {

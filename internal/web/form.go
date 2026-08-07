@@ -19,10 +19,12 @@ func bindDownloadForm(r *http.Request) (model.DownloadRequest, error) {
 			Quality:  strings.TrimSpace(r.FormValue("quality")),
 		},
 		Metadata: model.MusicMetadata{
-			Name:     strings.TrimSpace(r.FormValue("name")),
-			Artists:  cleanStrings(r.Form["artists"]),
-			Album:    strings.TrimSpace(r.FormValue("album")),
-			CoverURL: strings.TrimSpace(r.FormValue("coverUrl")),
+			Name:        strings.TrimSpace(r.FormValue("name")),
+			Artists:     cleanStrings(r.Form["artists"]),
+			Album:       strings.TrimSpace(r.FormValue("album")),
+			AlbumArtist: strings.TrimSpace(r.FormValue("albumArtist")),
+			Date:        strings.TrimSpace(r.FormValue("date")),
+			CoverURL:    strings.TrimSpace(r.FormValue("coverUrl")),
 		},
 	}, nil
 }

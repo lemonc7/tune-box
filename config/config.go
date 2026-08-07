@@ -75,21 +75,13 @@ func (s *Download) validate() error {
 
 // Providers 保存各音乐平台的接口配置。
 type Providers struct {
-	Kuwo    Kuwo    `yaml:"kuwo"`
-	Netease Netease `yaml:"netease"`
+	Kuwo Kuwo `yaml:"kuwo"`
 }
 
 // Kuwo 包含酷我搜索和资源解析接口。
 type Kuwo struct {
 	SearchURL  string `yaml:"search_url" env:"KUWO_SEARCH_URL"`
 	ResolveURL string `yaml:"resolve_url" env:"KUWO_RESOLVE_URL"`
-}
-
-// Netease 使用自建 API 搜索，使用扩展接口解析下载地址。
-type Netease struct {
-	BaseURL            string `yaml:"base_url" env:"NETEASE_API_BASE_URL"`
-	Cookie             string `yaml:"cookie" env:"NETEASE_COOKIE"`
-	ExtendedResolveURL string `yaml:"extended_resolve_url" env:"NETEASE_EXTENDED_RESOLVE_URL"`
 }
 
 // Database 定义 SQLite 连接池和锁等待配置。

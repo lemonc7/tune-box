@@ -11,16 +11,18 @@ type Quality struct {
 
 // Track 是不同音乐平台统一后的歌曲信息。
 type Track struct {
-	ID         string    `json:"id"`
-	Provider   string    `json:"provider"`
-	Name       string    `json:"name"`
-	Artists    []string  `json:"artists"`
-	ArtistIDs  []string  `json:"artistIds,omitempty"`
-	Album      string    `json:"album,omitempty"`
-	AlbumID    string    `json:"albumId,omitempty"`
-	CoverURL   string    `json:"coverUrl,omitempty"`
-	DurationMS int64     `json:"durationMs,omitempty"`
-	Qualities  []Quality `json:"qualities"`
+	ID          string    `json:"id"`
+	Provider    string    `json:"provider"`
+	Name        string    `json:"name"`
+	Artists     []string  `json:"artists"`
+	ArtistIDs   []string  `json:"artistIds,omitempty"`
+	Album       string    `json:"album,omitempty"`
+	AlbumID     string    `json:"albumId,omitempty"`
+	AlbumArtist string    `json:"albumArtist,omitempty"`
+	Date        string    `json:"date,omitempty"`
+	CoverURL    string    `json:"coverUrl,omitempty"`
+	DurationMS  int64     `json:"durationMs,omitempty"`
+	Qualities   []Quality `json:"qualities"`
 }
 
 // SearchResult 是分页搜索结果。
@@ -45,11 +47,12 @@ type Resource struct {
 
 // MusicMetadata 是写入音频文件的统一歌曲信息，歌词保留 LRC 时间轴。
 type MusicMetadata struct {
-	Name     string   `json:"name"`
-	Artists  []string `json:"artists,omitempty"`
-	Album    string   `json:"album,omitempty"`
-	CoverURL string   `json:"coverUrl,omitempty"`
-	// Lyrics   string   `json:"lyrics,omitempty"`
+	Name        string   `json:"name"`
+	Artists     []string `json:"artists,omitempty"`
+	Album       string   `json:"album,omitempty"`
+	AlbumArtist string   `json:"albumArtist,omitempty"`
+	Date        string   `json:"date,omitempty"`
+	CoverURL    string   `json:"coverUrl,omitempty"`
 }
 
 // DownloadResult 返回最终落盘文件的信息。

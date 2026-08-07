@@ -51,6 +51,9 @@ func (h *Handler) Home(c *echo.Context) error {
 		)
 	}
 	if isHTMXRequest(c) {
+		if req.Page > 1 {
+			return render(c, http.StatusOK, pages.SearchResultsAppend(result, req.Lossless))
+		}
 		return render(c, http.StatusOK, pages.SearchResults(result, req.Lossless))
 	}
 	return render(
@@ -76,6 +79,9 @@ func (h *Handler) Search(c *echo.Context) error {
 		return renderError(c, err)
 	}
 
+	if req.Page > 1 {
+		return render(c, http.StatusOK, pages.SearchResultsAppend(result, req.Lossless))
+	}
 	return render(
 		c,
 		http.StatusOK,
@@ -265,7 +271,8 @@ func (h *Handler) RetryDownload(c *echo.Context) error {
 
 func (h *Handler) LibraryPage(c *echo.Context) error {
 	keyword := strings.TrimSpace(c.QueryParam("q"))
-	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, 0, 20)
+	offset := queryInt(c, "offset", 0)
+	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, int64(offset), 20)
 	if err != nil {
 		return renderError(c, err)
 	}
@@ -274,9 +281,13 @@ func (h *Handler) LibraryPage(c *echo.Context) error {
 
 func (h *Handler) Library(c *echo.Context) error {
 	keyword := strings.TrimSpace(c.QueryParam("q"))
-	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, 0, 20)
+	offset := queryInt(c, "offset", 0)
+	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, int64(offset), 20)
 	if err != nil {
 		return renderError(c, err)
+	}
+	if offset > 0 {
+		return render(c, http.StatusOK, pages.LibraryResultsAppend(items, keyword, offset))
 	}
 	return render(c, http.StatusOK, pages.LibraryResults(items, keyword))
 }

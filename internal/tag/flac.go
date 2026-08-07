@@ -138,10 +138,12 @@ func (e *Embedder) EmbedFLAC(
 	}
 
 	replacements := map[string]string{
-		"TITLE":  strings.TrimSpace(metadata.Name),
-		"ARTIST": strings.Join(metadata.Artists, "; "),
-		"ALBUM":  strings.TrimSpace(metadata.Album),
-		"LYRICS": strings.TrimSpace(lyrics),
+		"TITLE":       strings.TrimSpace(metadata.Name),
+		"ARTIST":      strings.Join(metadata.Artists, "; "),
+		"ALBUM":       strings.TrimSpace(metadata.Album),
+		"LYRICS":      strings.TrimSpace(lyrics),
+		"ALBUMARTIST": strings.TrimSpace(metadata.AlbumArtist),
+		"DATE":        strings.TrimSpace(metadata.Date),
 	}
 	kept := comments[:0]
 	for _, comment := range comments {
@@ -152,7 +154,7 @@ func (e *Embedder) EmbedFLAC(
 		}
 	}
 	comments = kept
-	for _, key := range []string{"TITLE", "ARTIST", "ALBUM", "LYRICS"} {
+	for _, key := range []string{"TITLE", "ARTIST", "ALBUM", "LYRICS", "ALBUMARTIST", "DATE"} {
 		if value := replacements[key]; value != "" {
 			comments = append(comments, key+"="+value)
 		}
