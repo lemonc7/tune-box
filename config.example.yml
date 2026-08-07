@@ -1,11 +1,11 @@
 server:
   port: 8080
+  tz: Asia/Shanghai
   http_timeout: 30s
   download_timeout: 30m
   mcp_token: token
 
 database:
-  path: ./data/tune-go.db
   max_open_conns: 4
   max_idle_conns: 4
   conn_max_lifetime: 0s
@@ -13,7 +13,6 @@ database:
   busy_timeout: 5s
 
 download:
-  dir: ./downloads
   max_bytes: 104857600
   max_concurrent: 2
 

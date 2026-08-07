@@ -18,9 +18,11 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
+const dbPath = "data/tune-go.db"
+
 // New 打开 SQLite、配置连接池、执行迁移并返回数据仓库。
-func New(cfg config.DatabaseConfig) (*sql.DB, error) {
-	dbName, err := filepath.Abs(cfg.Path)
+func New(cfg config.Database) (*sql.DB, error) {
+	dbName, err := filepath.Abs(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("invalid db path: %w", err)
 	}

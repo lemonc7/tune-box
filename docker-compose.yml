@@ -1,0 +1,13 @@
+services:
+  tune-go:
+    image: lemonc7/tune-go:latest
+    container_name: tune-go
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./download:/app/download
+
+

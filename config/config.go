@@ -5,56 +5,107 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
+
+	_ "time/tzdata"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
 // Config 汇总服务、下载器和音乐源的全部配置。
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	Download  DownloadConfig  `yaml:"download"`
-	Providers ProvidersConfig `yaml:"providers"`
-	Database  DatabaseConfig  `yaml:"database"`
+	Server    Server    `yaml:"server"`
+	Download  Download  `yaml:"download"`
+	Providers Providers `yaml:"providers"`
+	Database  Database  `yaml:"database"`
 }
 
-// ServerConfig 定义监听端口以及两类 HTTP 操作的超时时间。
-type ServerConfig struct {
+func (c *Config) validate() error {
+	if err := c.Server.validate(); err != nil {
+		return fmt.Errorf("invalid server config: %w", err)
+	}
+	if err := c.Download.validate(); err != nil {
+		return fmt.Errorf("invalid download config: %w", err)
+	}
+	if err := c.Database.validate(); err != nil {
+		return fmt.Errorf("invalid database config: %w", err)
+	}
+	return nil
+}
+
+// Server 定义监听端口以及两类 HTTP 操作的超时时间。
+type Server struct {
 	Port            int           `yaml:"port" env:"PORT" env-default:"8080"`
+	TZ              string        `yaml:"tz" env:"TZ" env-default:"Asia/Shanghai"`
 	HTTPTimeout     time.Duration `yaml:"http_timeout" env:"HTTP_TIMEOUT" env-default:"30s"`
 	DownloadTimeout time.Duration `yaml:"download_timeout" env:"DOWNLOAD_TIMEOUT" env-default:"30m"`
 	MCPToken        string        `yaml:"mcp_token" env:"MCP_TOKEN"`
 }
 
-// DownloadConfig 控制文件保存位置和允许下载的单文件上限。
-type DownloadConfig struct {
-	Dir           string `yaml:"dir" env:"DOWNLOAD_DIR" env-default:"./downloads"`
-	MaxBytes      int64  `yaml:"max_bytes" env:"MAX_DOWNLOAD_BYTES" env-default:"104857600"`
-	MaxConcurrent int    `yaml:"max_concurrent" env:"MAX_CONCURRENT_DOWNLOADS" env-default:"2"`
+func (s *Server) validate() error {
+	if s.Port < 1 || s.Port > 65535 {
+		return fmt.Errorf("server post must between 1 and 65535")
+	}
+
+	tz := strings.TrimSpace(s.TZ)
+	if tz == "" {
+		return fmt.Errorf("timezone should not be empty")
+	}
+	_, err := time.LoadLocation(tz)
+	if err != nil {
+		return fmt.Errorf("invalid timezone: %s", tz)
+	}
+	if s.HTTPTimeout <= 0 {
+		return fmt.Errorf("http timeout must be positive")
+	}
+	if s.DownloadTimeout <= 0 {
+		return fmt.Errorf("download timeout must be positive")
+	}
+	if strings.TrimSpace(s.MCPToken) == "" {
+		return fmt.Errorf("mcp token does not setup")
+	}
+
+	return nil
 }
 
-// ProvidersConfig 保存各音乐平台的接口配置。
-type ProvidersConfig struct {
-	Kuwo    KuwoConfig    `yaml:"kuwo"`
-	Netease NeteaseConfig `yaml:"netease"`
+// Download 控制文件保存位置和允许下载的单文件上限。
+type Download struct {
+	MaxBytes      int64 `yaml:"max_bytes" env:"MAX_DOWNLOAD_BYTES" env-default:"104857600"`
+	MaxConcurrent int   `yaml:"max_concurrent" env:"MAX_CONCURRENT_DOWNLOADS" env-default:"2"`
 }
 
-// KuwoConfig 包含酷我搜索和资源解析接口。
-type KuwoConfig struct {
+func (s *Download) validate() error {
+	if s.MaxBytes <= 0 {
+		return fmt.Errorf("max bytes must be positive")
+	}
+	if s.MaxConcurrent < 1 {
+		return fmt.Errorf("max concurrent must be positive")
+	}
+	return nil
+}
+
+// Providers 保存各音乐平台的接口配置。
+type Providers struct {
+	Kuwo    Kuwo    `yaml:"kuwo"`
+	Netease Netease `yaml:"netease"`
+}
+
+// Kuwo 包含酷我搜索和资源解析接口。
+type Kuwo struct {
 	SearchURL  string `yaml:"search_url" env:"KUWO_SEARCH_URL"`
 	ResolveURL string `yaml:"resolve_url" env:"KUWO_RESOLVE_URL"`
 }
 
-// NeteaseConfig 使用自建 API 搜索，使用扩展接口解析下载地址。
-type NeteaseConfig struct {
+// Netease 使用自建 API 搜索，使用扩展接口解析下载地址。
+type Netease struct {
 	BaseURL            string `yaml:"base_url" env:"NETEASE_API_BASE_URL"`
 	Cookie             string `yaml:"cookie" env:"NETEASE_COOKIE"`
 	ExtendedResolveURL string `yaml:"extended_resolve_url" env:"NETEASE_EXTENDED_RESOLVE_URL"`
 }
 
-// DatabaseConfig 定义 SQLite 连接池和锁等待配置。
-type DatabaseConfig struct {
-	Path            string        `yaml:"path" env:"TUNE_GO_DB_PATH" env-default:"./data/tune-go.db"`
+// Database 定义 SQLite 连接池和锁等待配置。
+type Database struct {
 	MaxOpenConns    int           `yaml:"max_open_conns" env:"TUNE_GO_DB_MAX_OPEN_CONNS" env-default:"4"`
 	MaxIdleConns    int           `yaml:"max_idle_conns" env:"TUNE_GO_DB_MAX_IDLE_CONNS" env-default:"4"`
 	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"TUNE_GO_DB_CONN_MAX_LIFETIME" env-default:"0s"`
@@ -62,8 +113,27 @@ type DatabaseConfig struct {
 	BusyTimeout     time.Duration `yaml:"busy_timeout" env:"TUNE_GO_DB_BUSY_TIMEOUT" env-default:"5s"`
 }
 
+func (d *Database) validate() error {
+	if d.MaxOpenConns <= 0 {
+		return fmt.Errorf("max open connects must be positive")
+	}
+	if d.MaxIdleConns <= 0 || d.MaxIdleConns > d.MaxOpenConns {
+		return fmt.Errorf("max idle connects must be positive and less than max open connects")
+	}
+	if d.ConnMaxLifetime < 0 {
+		return fmt.Errorf("max life time should not be negative")
+	}
+	if d.ConnMaxIdleTime < 0 {
+		return fmt.Errorf("max idle time should not be negative")
+	}
+	if d.BusyTimeout <= 0 {
+		return fmt.Errorf("busy timeout must be positive")
+	}
+	return nil
+}
+
 // DSN 返回 modernc.org/sqlite 使用的连接字符串。
-func (c DatabaseConfig) DSN(path string) (string, error) {
+func (c Database) DSN(path string) (string, error) {
 	busyMilliseconds := c.BusyTimeout.Milliseconds()
 	if busyMilliseconds < 1 {
 		return "", fmt.Errorf("数据库锁等待时间不能小于 %s", time.Millisecond)
@@ -93,23 +163,15 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
-		return nil, fmt.Errorf("server.port must be between 1 and 65535")
+	if err := cfg.validate(); err != nil {
+		return nil, err
 	}
-	if cfg.Server.HTTPTimeout <= 0 || cfg.Server.DownloadTimeout <= 0 {
-		return nil, fmt.Errorf("server timeouts must be positive")
-	}
-	if cfg.Download.Dir == "" || cfg.Download.MaxBytes <= 0 || cfg.Download.MaxConcurrent <= 0 {
-		return nil, fmt.Errorf("download.dir, download.max_bytes and download.max_concurrent must be positive")
-	}
-	if cfg.Database.Path == "" {
-		return nil, fmt.Errorf("database.path is required")
-	}
+
 	return &cfg, nil
 }
 
 // Address 将纯端口转换成 Echo 所需的监听地址格式。
-func (c ServerConfig) Address() string {
+func (c Server) Address() string {
 	return ":" + strconv.Itoa(c.Port)
 }
 

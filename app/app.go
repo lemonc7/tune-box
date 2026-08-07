@@ -111,8 +111,19 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	}
 	db := store
 	queries := repo.New(db)
-	downloader := download.New(downloadClient, cfg.Download.Dir, cfg.Download.MaxBytes)
-	musicService := service.NewMusic(db, queries, registry, downloader, tag.New(client), cfg.Download.Dir, cfg.Download.MaxConcurrent, logger)
+	downloader := download.New(
+		downloadClient,
+		cfg.Download.MaxBytes,
+	)
+	musicService := service.NewMusic(
+		db,
+		queries,
+		registry,
+		downloader,
+		tag.New(client),
+		cfg.Download.MaxConcurrent,
+		logger,
+	)
 
 	if err := musicService.Start(context.Background()); err != nil {
 		db.Close()

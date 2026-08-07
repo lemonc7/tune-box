@@ -23,20 +23,19 @@ import (
 var ErrDownloadState = errors.New("当前任务状态不支持该操作")
 
 type Music struct {
-	db          *sql.DB
-	queries     *repo.Queries
-	registry    *provider.Registry
-	downloader  *download.Downloader
-	embedder    *tag.Embedder
-	downloadDir string
-	logger      *slog.Logger
-	queue       chan int64
-	workers     int
-	ctx         context.Context
-	stop        context.CancelFunc
-	wait        sync.WaitGroup
-	runningMu   sync.Mutex
-	running     map[int64]context.CancelFunc
+	db         *sql.DB
+	queries    *repo.Queries
+	registry   *provider.Registry
+	downloader *download.Downloader
+	embedder   *tag.Embedder
+	logger     *slog.Logger
+	queue      chan int64
+	workers    int
+	ctx        context.Context
+	stop       context.CancelFunc
+	wait       sync.WaitGroup
+	runningMu  sync.Mutex
+	running    map[int64]context.CancelFunc
 }
 
 func NewMusic(
@@ -45,21 +44,19 @@ func NewMusic(
 	registry *provider.Registry,
 	downloader *download.Downloader,
 	embedder *tag.Embedder,
-	downloadDir string,
 	workers int,
 	logger *slog.Logger,
 ) *Music {
 	return &Music{
-		db:          db,
-		queries:     queries,
-		registry:    registry,
-		downloader:  downloader,
-		embedder:    embedder,
-		downloadDir: downloadDir,
-		workers:     workers,
-		logger:      logger,
-		queue:       make(chan int64, 1024),
-		running:     make(map[int64]context.CancelFunc),
+		db:         db,
+		queries:    queries,
+		registry:   registry,
+		downloader: downloader,
+		embedder:   embedder,
+		workers:    workers,
+		logger:     logger,
+		queue:      make(chan int64, 1024),
+		running:    make(map[int64]context.CancelFunc),
 	}
 }
 
