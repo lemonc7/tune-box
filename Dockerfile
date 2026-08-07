@@ -2,6 +2,8 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /src
 
+ENV GOPROXY=https://goproxy.cn,direct
+
 COPY go.mod go.sum ./
 RUN go mod download
 
@@ -11,16 +13,16 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
     -ldflags="-s -w" \
-    -o /out/tune-go \
-    .
-
-RUN apk add --no-cache ca-certificates
+    -o /out/tune-go .
 
 
-FROM scratch
+FROM alpine:3.22
+
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata
 
 COPY --from=builder /out/tune-go /app/tune-go
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 WORKDIR /app
 

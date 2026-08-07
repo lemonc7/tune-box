@@ -1,6 +1,5 @@
 server:
   port: 8080
-  tz: Asia/Shanghai
   http_timeout: 30s
   download_timeout: 30m
   mcp_token: token

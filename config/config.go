@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 	_ "time/tzdata"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -37,7 +36,6 @@ func (c *Config) validate() error {
 // Server 定义监听端口以及两类 HTTP 操作的超时时间。
 type Server struct {
 	Port            int           `yaml:"port" env:"PORT" env-default:"8080"`
-	TZ              string        `yaml:"tz" env:"TZ" env-default:"Asia/Shanghai"`
 	HTTPTimeout     time.Duration `yaml:"http_timeout" env:"HTTP_TIMEOUT" env-default:"30s"`
 	DownloadTimeout time.Duration `yaml:"download_timeout" env:"DOWNLOAD_TIMEOUT" env-default:"30m"`
 	MCPToken        string        `yaml:"mcp_token" env:"MCP_TOKEN"`
@@ -46,15 +44,6 @@ type Server struct {
 func (s *Server) validate() error {
 	if s.Port < 1 || s.Port > 65535 {
 		return fmt.Errorf("server post must between 1 and 65535")
-	}
-
-	tz := strings.TrimSpace(s.TZ)
-	if tz == "" {
-		return fmt.Errorf("timezone should not be empty")
-	}
-	_, err := time.LoadLocation(tz)
-	if err != nil {
-		return fmt.Errorf("invalid timezone: %s", tz)
 	}
 	if s.HTTPTimeout <= 0 {
 		return fmt.Errorf("http timeout must be positive")
@@ -65,7 +54,6 @@ func (s *Server) validate() error {
 	if strings.TrimSpace(s.MCPToken) == "" {
 		return fmt.Errorf("mcp token does not setup")
 	}
-
 	return nil
 }
 
