@@ -153,15 +153,9 @@ func (h *Handler) CreateDownload(c *echo.Context) error {
 		"downloadsChanged",
 	)
 
-	message := fmt.Sprintf(
-		"任务 #%d 已加入下载队列",
-		result.DownloadID,
-	)
+	message := "已加入下载队列"
 	if result.Duplicate {
-		message = fmt.Sprintf(
-			"任务 #%d 已经存在",
-			result.DownloadID,
-		)
+		message = "下载任务已存在"
 	}
 
 	return render(

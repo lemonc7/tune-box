@@ -90,8 +90,9 @@ type DownloadHistory struct {
 }
 
 type Song struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Artists string `json:"artists"`
-	Size    int64  `json:"int"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Extension string `json:"extension"`
+	Artists   string `json:"artists"`
+	Size      int64  `json:"size"`
 }

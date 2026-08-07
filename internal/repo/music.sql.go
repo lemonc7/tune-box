@@ -303,6 +303,7 @@ const listSongs = `-- name: ListSongs :many
 SELECT
     s.id,
     s.name,
+    s.extension,
     GROUP_CONCAT(a.name, ', ') AS artists,
     s.size
 FROM songs s
@@ -321,10 +322,11 @@ type ListSongsParams struct {
 }
 
 type ListSongsRow struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Artists string `json:"artists"`
-	Size    int64  `json:"size"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Extension string `json:"extension"`
+	Artists   string `json:"artists"`
+	Size      int64  `json:"size"`
 }
 
 func (q *Queries) ListSongs(ctx context.Context, arg ListSongsParams) ([]ListSongsRow, error) {
@@ -339,6 +341,7 @@ func (q *Queries) ListSongs(ctx context.Context, arg ListSongsParams) ([]ListSon
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.Extension,
 			&i.Artists,
 			&i.Size,
 		); err != nil {
@@ -542,6 +545,7 @@ const searchSongs = `-- name: SearchSongs :many
 SELECT
     s.id,
     s.name,
+    s.extension,
     GROUP_CONCAT(a.name, ', ') AS artists,
     s.size
 FROM songs s
@@ -564,10 +568,11 @@ type SearchSongsParams struct {
 }
 
 type SearchSongsRow struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Artists string `json:"artists"`
-	Size    int64  `json:"size"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Extension string `json:"extension"`
+	Artists   string `json:"artists"`
+	Size      int64  `json:"size"`
 }
 
 func (q *Queries) SearchSongs(ctx context.Context, arg SearchSongsParams) ([]SearchSongsRow, error) {
@@ -582,6 +587,7 @@ func (q *Queries) SearchSongs(ctx context.Context, arg SearchSongsParams) ([]Sea
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.Extension,
 			&i.Artists,
 			&i.Size,
 		); err != nil {
@@ -602,6 +608,7 @@ const searchSongs2 = `-- name: SearchSongs2 :many
 SELECT
     s.id,
     s.name,
+    s.extension,
     GROUP_CONCAT(a.name, ', ') AS artists,
     s.size
 FROM songs s
@@ -632,10 +639,11 @@ type SearchSongs2Params struct {
 }
 
 type SearchSongs2Row struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Artists string `json:"artists"`
-	Size    int64  `json:"size"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Extension string `json:"extension"`
+	Artists   string `json:"artists"`
+	Size      int64  `json:"size"`
 }
 
 func (q *Queries) SearchSongs2(ctx context.Context, arg SearchSongs2Params) ([]SearchSongs2Row, error) {
@@ -655,6 +663,7 @@ func (q *Queries) SearchSongs2(ctx context.Context, arg SearchSongs2Params) ([]S
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.Extension,
 			&i.Artists,
 			&i.Size,
 		); err != nil {

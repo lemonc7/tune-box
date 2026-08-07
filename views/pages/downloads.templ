@@ -30,80 +30,101 @@ templ DownloadList(items []model.DownloadHistory, polling bool) {
 		if len(items) == 0 {
 			@components.Empty("暂无下载记录")
 		} else {
-			<div class="space-y-3">
-				for _,item := range items {
-					@DownloadItem(item)
-				}
+			<div class="overflow-x-auto">
+				<table class="w-full text-sm">
+					<thead>
+						<tr class="border-b border-slate-200 text-left text-xs font-semibold uppercase text-slate-400">
+							<th class="px-3 py-2.5">歌曲</th>
+							<th class="hidden px-3 py-2.5 sm:table-cell">平台</th>
+							<th class="hidden px-3 py-2.5 sm:table-cell">音质</th>
+							<th class="hidden px-3 py-2.5 md:table-cell">大小</th>
+							<th class="px-3 py-2.5">状态</th>
+							<th class="px-3 py-2.5 text-right">操作</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-slate-100">
+						for _, item := range items {
+							<tr id={ fmt.Sprintf("download-%d", item.ID) } class="transition-colors hover:bg-slate-50/50">
+								<td class="px-3 py-3">
+									<div class="min-w-0">
+										<span class="block truncate font-semibold text-slate-800">{ item.Name }</span>
+										if len(item.Artists) > 0 {
+											<span class="block truncate text-xs text-slate-400">{ formatArtists(item.Artists) }</span>
+										}
+										if item.Status == "downloading" && item.DownloadedBytes > 0 && item.TotalBytes > 0 {
+											<div class="mt-1.5 flex items-center gap-2">
+												<progress class="h-1.5 flex-1 rounded-full accent-accent [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-slate-100 [&::-webkit-progress-value]:rounded-full" value={ fmt.Sprintf("%d", item.Progress) } max="100"></progress>
+												<span class="min-w-[2.8rem] text-right text-xs tabular-nums text-accent">{ fmt.Sprintf("%d%%", item.Progress) }</span>
+											</div>
+										}
+										if item.ErrorMessage != nil {
+											<p class="mt-1 truncate text-xs text-red-500">{ *item.ErrorMessage }</p>
+										}
+									</div>
+								</td>
+								<td class="hidden px-3 py-3 sm:table-cell">
+									<span class="rounded-md bg-accent-light px-2 py-0.5 text-xs font-semibold text-accent">{ item.Provider }</span>
+								</td>
+								<td class="hidden px-3 py-3 sm:table-cell">
+									<span class="rounded-md bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">{ item.Quality }</span>
+								</td>
+								<td class="hidden whitespace-nowrap px-3 py-3 text-slate-500 md:table-cell">
+									if item.TotalBytes > 0 {
+										<span>{ formatBytes(item.TotalBytes) }</span>
+									} else {
+										<span class="text-slate-300">—</span>
+									}
+								</td>
+								<td class="whitespace-nowrap px-3 py-3">
+									<span class={ statusClass(item.Status) + " rounded-md px-2 py-0.5 text-xs font-bold" }>{ statusText(item.Status) }</span>
+								</td>
+								<td class="whitespace-nowrap px-3 py-3 text-right">
+									<div class="flex justify-end gap-1">
+										switch item.Status {
+											case "pending","resolving","downloading":
+												<button
+													class="cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+													hx-post={ fmt.Sprintf("/web/downloads/%d/pause", item.ID) }
+													hx-target="#download-list"
+													hx-swap="outerHTML"
+												>暂停</button>
+												<button
+													class="cursor-pointer rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+													hx-post={ fmt.Sprintf("/web/downloads/%d/cancel", item.ID) }
+													hx-target="#download-list"
+													hx-swap="outerHTML"
+													hx-confirm="确定取消？"
+												>取消</button>
+											case "paused":
+												<button
+													class="cursor-pointer rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 hover:bg-green-100"
+													hx-post={ fmt.Sprintf("/web/downloads/%d/resume", item.ID) }
+													hx-target="#download-list"
+													hx-swap="outerHTML"
+												>继续</button>
+												<button
+													class="cursor-pointer rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+													hx-post={ fmt.Sprintf("/web/downloads/%d/cancel", item.ID) }
+													hx-target="#download-list"
+													hx-swap="outerHTML"
+													hx-confirm="确定取消？"
+												>取消</button>
+											case "failed","cancelled":
+												<button
+													class="cursor-pointer rounded-md border border-indigo-200 bg-accent-light px-2 py-1 text-xs font-semibold text-accent hover:bg-indigo-100"
+													hx-post={ fmt.Sprintf("/web/downloads/%d/retry", item.ID) }
+													hx-target="#download-list"
+													hx-swap="outerHTML"
+												>重试</button>
+										}
+									</div>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
 			</div>
 		}
-	</div>
-}
-
-templ DownloadItem(item model.DownloadHistory) {
-	<div class="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-shadow hover:shadow-sm sm:grid-cols-[1fr_auto]" id={ fmt.Sprintf("download-%d", item.ID) }>
-		<div class="min-w-0 space-y-2.5">
-			<div class="flex flex-wrap items-center justify-between gap-2">
-				<strong class="truncate text-base font-semibold">{ item.Name }</strong>
-				<div class="flex flex-wrap items-center gap-1.5 text-xs">
-					<span class="rounded-md bg-accent-light px-2 py-0.5 font-semibold text-accent">{ item.Provider }</span>
-					<span class="rounded-md bg-green-50 px-2 py-0.5 font-semibold text-green-700">{ item.Quality }</span>
-				</div>
-			</div>
-			if item.Status == "downloading" || item.Status == "tagging" {
-				<div class="flex items-center gap-3">
-					<progress class="h-2 flex-1 rounded-full accent-accent [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-slate-100 [&::-webkit-progress-value]:rounded-full" value={ fmt.Sprintf("%d", item.Progress) } max="100"></progress>
-					<span class="min-w-[2.8rem] text-right text-sm font-bold text-accent">{ fmt.Sprintf("%d%%", item.Progress) }</span>
-				</div>
-			}
-			if item.Status == "downloading" && item.DownloadedBytes > 0 && item.TotalBytes > 0 {
-				<span class="text-xs text-slate-400">{ formatBytes(item.DownloadedBytes) + " / " + formatBytes(item.TotalBytes) }</span>
-			}
-			if item.ErrorMessage != nil {
-				<p class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{ *item.ErrorMessage }</p>
-			}
-		</div>
-		<div class="flex flex-row items-center justify-between gap-2 sm:flex-col sm:items-end sm:justify-center">
-			<span class={ statusClass(item.Status) + " rounded-md px-2 py-0.5 text-xs font-bold" }>{ statusText(item.Status) }</span>
-			<div class="flex gap-1">
-				switch item.Status {
-					case "pending","resolving","downloading":
-						<button
-							class="cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-							hx-post={ fmt.Sprintf("/web/downloads/%d/pause", item.ID) }
-							hx-target="#download-list"
-							hx-swap="outerHTML"
-						>暂停</button>
-						<button
-							class="cursor-pointer rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
-							hx-post={ fmt.Sprintf("/web/downloads/%d/cancel", item.ID) }
-							hx-target="#download-list"
-							hx-swap="outerHTML"
-							hx-confirm="确定取消？"
-						>取消</button>
-					case "paused":
-						<button
-							class="cursor-pointer rounded-md border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100"
-							hx-post={ fmt.Sprintf("/web/downloads/%d/resume", item.ID) }
-							hx-target="#download-list"
-							hx-swap="outerHTML"
-						>继续</button>
-						<button
-							class="cursor-pointer rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
-							hx-post={ fmt.Sprintf("/web/downloads/%d/cancel", item.ID) }
-							hx-target="#download-list"
-							hx-swap="outerHTML"
-							hx-confirm="确定取消？"
-						>取消</button>
-					case "failed","cancelled":
-						<button
-							class="cursor-pointer rounded-md border border-indigo-200 bg-accent-light px-2.5 py-1.5 text-xs font-semibold text-accent hover:bg-indigo-100"
-							hx-post={ fmt.Sprintf("/web/downloads/%d/retry", item.ID) }
-							hx-target="#download-list"
-							hx-swap="outerHTML"
-						>重试</button>
-				}
-			</div>
-		</div>
 	</div>
 }
 
@@ -160,5 +181,20 @@ func formatBytes(size int64) string {
 		return fmt.Sprintf("%.1f KB", float64(size)/float64(kb))
 	default:
 		return fmt.Sprintf("%d B", size)
+	}
+}
+
+func formatArtists(artists []string) string {
+	switch len(artists) {
+	case 0:
+		return ""
+	case 1:
+		return artists[0]
+	default:
+		result := artists[0]
+		for i := 1; i < len(artists); i++ {
+			result += " / " + artists[i]
+		}
+		return result
 	}
 }

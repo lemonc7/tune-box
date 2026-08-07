@@ -68,6 +68,15 @@ type taskOutput struct {
 	Result model.DownloadTaskResult `json:"result"`
 }
 
+type searchLibraryInput struct {
+	Query string `json:"query" jsonschema:"歌曲名或歌手名，用于搜索本地曲库"`
+	Limit int    `json:"limit,omitempty" jsonschema:"返回数量，默认 20，最大 100"`
+}
+type searchLibraryOutput struct {
+	Songs []model.Song `json:"songs"`
+	Count int          `json:"count"`
+}
+
 type listInput struct {
 	Limit  int `json:"limit,omitempty" jsonschema:"返回数量，默认 50，最大 500"`
 	Offset int `json:"offset,omitempty" jsonschema:"偏移量，默认 0"`
@@ -77,22 +86,41 @@ type downloadsOutput struct {
 }
 
 // New 创建无状态的 Streamable HTTP MCP 服务。
-func New(music *service.Music, logger *slog.Logger) http.Handler {
+func New(music *service.Music, logger *slog.Logger, token string) http.Handler {
 	server := &Server{
 		music: music, logger: logger,
 		mcp: protocol.NewServer(&protocol.Implementation{Name: "tune-go", Version: "0.2.0"}, nil),
 	}
 	server.registerTools()
-	return protocol.NewStreamableHTTPHandler(
+	handler := protocol.NewStreamableHTTPHandler(
 		func(*http.Request) *protocol.Server { return server.mcp },
 		&protocol.StreamableHTTPOptions{Stateless: true, JSONResponse: true, Logger: logger},
 	)
+	if token == "" {
+		return handler
+	}
+	return mcpAuth(handler, token)
+}
+
+// mcpAuth 校验 Authorization: Bearer <token>，token 不匹配时返回 401。
+func mcpAuth(next http.Handler, token string) http.Handler {
+	expected := "Bearer " + token
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != expected {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"unauthorized","message":"invalid MCP token"}`))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) registerTools() {
 	// MCP 只负责参数和协议转换，具体业务统一交给 service.Music。
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "list_providers", Description: "列出 Tune Go 已注册的音乐源及其可用状态。"}, s.listProviders)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "search_music", Description: "从指定音乐源搜索歌曲；返回歌曲 ID 和可选音质。"}, s.searchMusic)
+	protocol.AddTool(s.mcp, &protocol.Tool{Name: "search_library", Description: "查询本地曲库中已存在的歌曲；下载前应调用此工具检查，避免重复下载。"}, s.searchLibrary)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "resolve_music", Description: "解析临时资源信息，仅用于检查资源，不写入文件。"}, s.resolveMusic)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "download_music", Description: "创建异步下载任务，立即返回任务 ID。"}, s.downloadMusic)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "list_downloads", Description: "查询下载任务的状态、进度、字节数和重试次数。"}, s.listDownloads)
@@ -129,6 +157,22 @@ func (s *Server) searchMusic(ctx context.Context, _ *protocol.CallToolRequest, i
 		return nil, searchOutput{}, err
 	}
 	return nil, searchOutput{Result: result}, nil
+}
+
+func (s *Server) searchLibrary(ctx context.Context, _ *protocol.CallToolRequest, input searchLibraryInput) (*protocol.CallToolResult, searchLibraryOutput, error) {
+	limit := int64(20)
+	if input.Limit > 0 {
+		if input.Limit > 100 {
+			return nil, searchLibraryOutput{}, errors.New("limit must be between 1 and 100")
+		}
+		limit = int64(input.Limit)
+	}
+	songs, err := s.music.SearchSongs(ctx, strings.TrimSpace(input.Query), 0, limit)
+	if err != nil {
+		s.logger.Error("mcp library search failed", "query", input.Query, "error", err)
+		return nil, searchLibraryOutput{}, err
+	}
+	return nil, searchLibraryOutput{Songs: songs, Count: len(songs)}, nil
 }
 
 func (s *Server) resolveMusic(ctx context.Context, _ *protocol.CallToolRequest, input resolveInput) (*protocol.CallToolResult, resolveOutput, error) {

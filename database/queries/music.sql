@@ -173,6 +173,7 @@ WHERE song_id = ?;
 SELECT
     s.id,
     s.name,
+    s.extension,
     GROUP_CONCAT(a.name, ', ') AS artists,
     s.size
 FROM songs s
@@ -188,6 +189,7 @@ LIMIT @limit OFFSET @offset;
 SELECT
     s.id,
     s.name,
+    s.extension,
     GROUP_CONCAT(a.name, ', ') AS artists,
     s.size
 FROM songs s
@@ -206,6 +208,7 @@ LIMIT @limit OFFSET @offset;
 SELECT
     s.id,
     s.name,
+    s.extension,
     GROUP_CONCAT(a.name, ', ') AS artists,
     s.size
 FROM songs s

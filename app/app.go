@@ -126,7 +126,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		db:     db,
 	}
 
-	app.initRouter(musicService)
+	app.initRouter(musicService, cfg.Server.MCPToken)
 
 	return app, nil
 }
@@ -143,7 +143,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // initRouter 注册健康检查、MCP 和 REST API 路由。
-func (a *App) initRouter(service *service.Music) {
+func (a *App) initRouter(service *service.Music, mcpToken string) {
 	resource := &api.MusicHandler{Music: service}
 	web := &web.Handler{Music: service}
 
@@ -154,6 +154,7 @@ func (a *App) initRouter(service *service.Music) {
 	a.echo.Any("/mcp", echo.WrapHandler(mcp.New(
 		resource.Music,
 		a.logger,
+		mcpToken,
 	)))
 
 	api := a.echo.Group("/api")

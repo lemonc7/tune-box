@@ -537,10 +537,11 @@ func (s *Music) SearchSongs(ctx context.Context, keyword string, offset, limit i
 		}
 		for _, row := range rows {
 			results = append(results, model.Song{
-				ID:      row.ID,
-				Name:    row.Name,
-				Artists: row.Artists,
-				Size:    row.Size,
+				ID:        row.ID,
+				Name:      row.Name,
+				Extension: row.Extension,
+				Artists:   row.Artists,
+				Size:      row.Size,
 			})
 		}
 	case 1:
@@ -554,10 +555,11 @@ func (s *Music) SearchSongs(ctx context.Context, keyword string, offset, limit i
 		}
 		for _, row := range rows {
 			results = append(results, model.Song{
-				ID:      row.ID,
-				Name:    row.Name,
-				Artists: row.Artists,
-				Size:    row.Size,
+				ID:        row.ID,
+				Name:      row.Name,
+				Extension: row.Extension,
+				Artists:   row.Artists,
+				Size:      row.Size,
 			})
 		}
 	case 2:
@@ -572,10 +574,11 @@ func (s *Music) SearchSongs(ctx context.Context, keyword string, offset, limit i
 		}
 		for _, row := range rows {
 			results = append(results, model.Song{
-				ID:      row.ID,
-				Name:    row.Name,
-				Artists: row.Artists,
-				Size:    row.Size,
+				ID:        row.ID,
+				Name:      row.Name,
+				Extension: row.Extension,
+				Artists:   row.Artists,
+				Size:      row.Size,
 			})
 		}
 	}
