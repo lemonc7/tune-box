@@ -70,14 +70,14 @@ func LibraryContent(items []model.Song, keyword string, count int) templ.Compone
 			return templ_7745c5c3_Err
 		}
 		if count > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<span class=\"rounded-full bg-accent-light px-3 py-1 text-sm font-bold text-accent\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<span class=\"rounded-full bg-indigo-50 px-3 py-1 text-sm font-bold text-indigo-600\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d 首", count))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 19, Col: 117}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 19, Col: 118}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -101,7 +101,7 @@ func LibraryContent(items []model.Song, keyword string, count int) templ.Compone
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" autocomplete=\"off\" class=\"w-full max-w-sm rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm shadow-xs focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/20\"></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" autocomplete=\"off\" class=\"w-full max-w-sm rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm shadow-xs focus:border-indigo-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-600/20\"></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

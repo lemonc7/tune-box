@@ -4,3 +4,4 @@
 Dockerfile
 sqlc.yml
 config.example.yml
+/assets/input.css

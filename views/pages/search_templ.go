@@ -79,7 +79,7 @@ func SearchContent(
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/90 via-white to-white p-6 shadow-sm\"><header class=\"mb-5\"><p class=\"mb-1 text-[0.65rem] font-extrabold uppercase tracking-[0.15em] text-accent\">TuneGo Search</p><h1 class=\"mb-1 text-2xl font-bold\">找到想听的音乐</h1><p class=\"text-sm text-slate-500\">选择音乐源，按歌曲、歌手或专辑搜索。</p></header><form class=\"space-y-4\" action=\"/\" method=\"get\" hx-get=\"/\" hx-target=\"#search-results\" hx-swap=\"innerHTML\" hx-indicator=\"#search-loading\" hx-push-url=\"true\"><div class=\"grid grid-cols-1 gap-3 sm:grid-cols-[minmax(10rem,0.3fr)_minmax(16rem,1fr)]\"><label class=\"grid gap-1.5 text-xs font-semibold text-slate-600\">音乐源 <select name=\"provider\" required class=\"rounded-lg border border-indigo-200 px-3 py-2.5 text-sm shadow-sm focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/20\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/90 via-white to-white p-6 shadow-sm\"><header class=\"mb-5\"><p class=\"mb-1 text-[0.65rem] font-extrabold uppercase tracking-[0.15em] text-indigo-600\">TuneGo Search</p><h1 class=\"mb-1 text-2xl font-bold\">找到想听的音乐</h1><p class=\"text-sm text-slate-500\">选择音乐源，按歌曲、歌手或专辑搜索。</p></header><form class=\"space-y-4\" action=\"/\" method=\"get\" hx-get=\"/\" hx-target=\"#search-results\" hx-swap=\"innerHTML\" hx-indicator=\"#search-loading\" hx-push-url=\"true\"><div class=\"grid grid-cols-1 gap-3 sm:grid-cols-[minmax(10rem,0.3fr)_minmax(16rem,1fr)]\"><label class=\"grid gap-1.5 text-xs font-semibold text-slate-600\">音乐源 <select name=\"provider\" required class=\"rounded-lg border border-indigo-200 px-3 py-2.5 text-sm shadow-sm focus:border-indigo-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-600/20\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -144,7 +144,7 @@ func SearchContent(
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" required class=\"rounded-lg border border-indigo-200 px-3 py-2.5 text-sm shadow-sm focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/20\"></label></div><div class=\"flex flex-col items-center justify-between gap-3 sm:flex-row\"><label class=\"inline-flex cursor-pointer items-center gap-3 rounded-xl border border-indigo-100 bg-white/80 px-3 py-2.5\"><input name=\"lossless\" type=\"checkbox\" value=\"true\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" required class=\"rounded-lg border border-indigo-200 px-3 py-2.5 text-sm shadow-sm focus:border-indigo-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-600/20\"></label></div><div class=\"flex flex-col items-center justify-between gap-3 sm:flex-row\"><label class=\"inline-flex cursor-pointer items-center gap-3 rounded-xl border border-indigo-100 bg-white/80 px-3 py-2.5\"><input name=\"lossless\" type=\"checkbox\" value=\"true\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -154,7 +154,7 @@ func SearchContent(
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, " class=\"sr-only peer\"> <span class=\"relative h-5 w-9 shrink-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-4\"></span> <span class=\"grid gap-0.5\"><strong class=\"text-sm text-slate-700\">仅显示无损</strong> <small class=\"text-xs text-slate-400\">FLAC / APE / Hi-Res</small></span></label><div class=\"flex w-full items-center justify-end gap-3 sm:w-auto\"><span id=\"search-loading\" class=\"htmx-indicator hidden text-sm text-accent\">搜索中...</span> <button type=\"submit\" class=\"cursor-pointer rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-white hover:bg-accent-dark transition-colors\">搜索音乐</button></div></div><input name=\"page\" type=\"hidden\" value=\"1\"> <input name=\"limit\" type=\"hidden\" value=\"20\"></form></section><section id=\"search-results\" aria-live=\"polite\" class=\"rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, " class=\"sr-only peer\"> <span class=\"relative h-5 w-9 shrink-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-indigo-600 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-4\"></span> <span class=\"grid gap-0.5\"><strong class=\"text-sm text-slate-700\">仅显示无损</strong> <small class=\"text-xs text-slate-400\">FLAC / APE / Hi-Res</small></span></label><div class=\"flex w-full items-center justify-end gap-3 sm:w-auto\"><span id=\"search-loading\" class=\"htmx-indicator hidden text-sm text-indigo-600\">搜索中...</span> <button type=\"submit\" class=\"cursor-pointer rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 transition-colors\">搜索音乐</button></div></div><input name=\"page\" type=\"hidden\" value=\"1\"> <input name=\"limit\" type=\"hidden\" value=\"20\"></form></section><section id=\"search-results\" aria-live=\"polite\" class=\"rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -209,14 +209,14 @@ func SearchResults(result model.SearchResult, lossless bool) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"mb-3 flex items-baseline justify-between gap-3\"><h2 class=\"text-lg font-bold\">搜索结果</h2><span class=\"rounded-full bg-accent-light px-2.5 py-1 text-xs font-bold text-accent\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"mb-3 flex items-baseline justify-between gap-3\"><h2 class=\"text-lg font-bold\">搜索结果</h2><span class=\"rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-600\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("第 %d 页 · 共 %d 首", result.Page, result.Total))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/search.templ`, Line: 107, Col: 156}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/search.templ`, Line: 107, Col: 157}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -406,7 +406,7 @@ func SearchPagination(result model.SearchResult, lossless bool) templ.Component 
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" hx-target=\"#search-results\" hx-swap=\"innerHTML\" hx-push-url=\"true\" class=\"min-w-[5rem] rounded-lg bg-accent-light px-3 py-2 text-center text-sm font-bold text-accent hover:bg-accent hover:text-white transition-colors\">上一页</a> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" hx-target=\"#search-results\" hx-swap=\"innerHTML\" hx-push-url=\"true\" class=\"min-w-[5rem] rounded-lg bg-indigo-50 px-3 py-2 text-center text-sm font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors\">上一页</a> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -460,7 +460,7 @@ func SearchPagination(result model.SearchResult, lossless bool) templ.Component 
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" hx-target=\"#search-results\" hx-swap=\"innerHTML\" hx-push-url=\"true\" class=\"min-w-[5rem] rounded-lg bg-accent-light px-3 py-2 text-center text-sm font-bold text-accent hover:bg-accent hover:text-white transition-colors\">下一页</a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" hx-target=\"#search-results\" hx-swap=\"innerHTML\" hx-push-url=\"true\" class=\"min-w-[5rem] rounded-lg bg-indigo-50 px-3 py-2 text-center text-sm font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors\">下一页</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
