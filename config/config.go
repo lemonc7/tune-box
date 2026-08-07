@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	_ "time/tzdata"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
