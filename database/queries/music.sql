@@ -169,24 +169,6 @@ VALUES (?, ?);
 DELETE FROM song_artists 
 WHERE song_id = ?;
 
--- name: SearchSongs :many
-SELECT
-    s.id,
-    s.name,
-    s.path,
-    GROUP_CONCAT(a.name, ', ') AS artists
-FROM songs s
-LEFT JOIN song_artists sa
-    ON s.id = sa.song_id
-LEFT JOIN artists a
-    ON sa.artist_id = a.id
-WHERE
-    s.name LIKE '%' || @keyword || '%'
-    OR a.name LIKE '%' || @keyword || '%'
-GROUP BY s.id
-ORDER BY s.created_at DESC
-LIMIT @limit;
-
 -- name: ListSongs :many
 SELECT
     s.id,
@@ -198,6 +180,49 @@ LEFT JOIN song_artists sa
     ON s.id = sa.song_id
 LEFT JOIN artists a
     ON sa.artist_id = a.id
+GROUP BY s.id
+ORDER BY s.created_at DESC
+LIMIT @limit OFFSET @offset;
+
+-- name: SearchSongs :many
+SELECT
+    s.id,
+    s.name,
+    GROUP_CONCAT(a.name, ', ') AS artists,
+    s.size
+FROM songs s
+LEFT JOIN song_artists sa
+    ON s.id = sa.song_id
+LEFT JOIN artists a
+    ON sa.artist_id = a.id
+WHERE
+    s.name LIKE '%' || @keyword1 || '%'
+    OR a.name LIKE '%' || @keyword1 || '%'
+GROUP BY s.id
+ORDER BY s.created_at DESC
+LIMIT @limit OFFSET @offset;
+
+-- name: SearchSongs2 :many
+SELECT
+    s.id,
+    s.name,
+    GROUP_CONCAT(a.name, ', ') AS artists,
+    s.size
+FROM songs s
+LEFT JOIN song_artists sa
+    ON s.id = sa.song_id
+LEFT JOIN artists a
+    ON sa.artist_id = a.id
+WHERE
+(
+    s.name LIKE '%' || @keyword1 || '%'
+    OR a.name LIKE '%' || @keyword1 || '%'
+)
+AND
+(
+    s.name LIKE '%' || @keyword2 || '%'
+    OR a.name LIKE '%' || @keyword2 || '%'
+)
 GROUP BY s.id
 ORDER BY s.created_at DESC
 LIMIT @limit OFFSET @offset;

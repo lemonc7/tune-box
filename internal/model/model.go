@@ -89,13 +89,9 @@ type DownloadHistory struct {
 	FinishedAt      *string  `json:"finishedAt,omitempty"`
 }
 
-// LibraryFile 是曲库中由下载任务产生的音频文件。
-type LibraryFile struct {
-	ID         int64  `json:"id"`
-	DownloadID int64  `json:"downloadId"`
-	Path       string `json:"path"`
-	FileName   string `json:"fileName"`
-	Extension  string `json:"extension"`
-	Size       int64  `json:"size"`
-	ModifiedAt string `json:"modifiedAt"`
+type Song struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Artists string `json:"artists"`
+	Size    int64  `json:"int"`
 }

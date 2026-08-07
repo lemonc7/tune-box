@@ -542,8 +542,8 @@ const searchSongs = `-- name: SearchSongs :many
 SELECT
     s.id,
     s.name,
-    s.path,
-    GROUP_CONCAT(a.name, ', ') AS artists
+    GROUP_CONCAT(a.name, ', ') AS artists,
+    s.size
 FROM songs s
 LEFT JOIN song_artists sa
     ON s.id = sa.song_id
@@ -554,23 +554,24 @@ WHERE
     OR a.name LIKE '%' || ?1 || '%'
 GROUP BY s.id
 ORDER BY s.created_at DESC
-LIMIT ?2
+LIMIT ?3 OFFSET ?2
 `
 
 type SearchSongsParams struct {
-	Keyword *string `json:"keyword"`
-	Limit   int64   `json:"limit"`
+	Keyword1 *string `json:"keyword1"`
+	Offset   int64   `json:"offset"`
+	Limit    int64   `json:"limit"`
 }
 
 type SearchSongsRow struct {
 	ID      int64  `json:"id"`
 	Name    string `json:"name"`
-	Path    string `json:"path"`
 	Artists string `json:"artists"`
+	Size    int64  `json:"size"`
 }
 
 func (q *Queries) SearchSongs(ctx context.Context, arg SearchSongsParams) ([]SearchSongsRow, error) {
-	rows, err := q.db.QueryContext(ctx, searchSongs, arg.Keyword, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, searchSongs, arg.Keyword1, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -581,8 +582,81 @@ func (q *Queries) SearchSongs(ctx context.Context, arg SearchSongsParams) ([]Sea
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
-			&i.Path,
 			&i.Artists,
+			&i.Size,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchSongs2 = `-- name: SearchSongs2 :many
+SELECT
+    s.id,
+    s.name,
+    GROUP_CONCAT(a.name, ', ') AS artists,
+    s.size
+FROM songs s
+LEFT JOIN song_artists sa
+    ON s.id = sa.song_id
+LEFT JOIN artists a
+    ON sa.artist_id = a.id
+WHERE
+(
+    s.name LIKE '%' || ?1 || '%'
+    OR a.name LIKE '%' || ?1 || '%'
+)
+AND
+(
+    s.name LIKE '%' || ?2 || '%'
+    OR a.name LIKE '%' || ?2 || '%'
+)
+GROUP BY s.id
+ORDER BY s.created_at DESC
+LIMIT ?4 OFFSET ?3
+`
+
+type SearchSongs2Params struct {
+	Keyword1 *string `json:"keyword1"`
+	Keyword2 *string `json:"keyword2"`
+	Offset   int64   `json:"offset"`
+	Limit    int64   `json:"limit"`
+}
+
+type SearchSongs2Row struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Artists string `json:"artists"`
+	Size    int64  `json:"size"`
+}
+
+func (q *Queries) SearchSongs2(ctx context.Context, arg SearchSongs2Params) ([]SearchSongs2Row, error) {
+	rows, err := q.db.QueryContext(ctx, searchSongs2,
+		arg.Keyword1,
+		arg.Keyword2,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchSongs2Row
+	for rows.Next() {
+		var i SearchSongs2Row
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Artists,
+			&i.Size,
 		); err != nil {
 			return nil, err
 		}

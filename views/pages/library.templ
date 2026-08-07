@@ -2,18 +2,16 @@ package pages
 
 import (
 	"fmt"
-	"github.com/lemonc7/tune-go/internal/repo"
+	"github.com/lemonc7/tune-go/internal/model"
 	"github.com/lemonc7/tune-go/views/components"
 	"github.com/lemonc7/tune-go/views/layout"
-	"path/filepath"
-	"strings"
 )
 
-templ LibraryPage(items []repo.SearchSongsRow, keyword string, count int) {
+templ LibraryPage(items []model.Song, keyword string, count int) {
 	@layout.Layout("本地曲库", LibraryContent(items, keyword, count))
 }
 
-templ LibraryContent(items []repo.SearchSongsRow, keyword string, count int) {
+templ LibraryContent(items []model.Song, keyword string, count int) {
 	<section class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm">
 		<header class="mb-4 flex flex-wrap items-center justify-between gap-3">
 			<h1 class="text-2xl font-bold">本地曲库</h1>
@@ -41,7 +39,7 @@ templ LibraryContent(items []repo.SearchSongsRow, keyword string, count int) {
 	</section>
 }
 
-templ LibraryResults(items []repo.SearchSongsRow, keyword string) {
+templ LibraryResults(items []model.Song, keyword string) {
 	<div id="library-results">
 		if len(items) == 0 {
 			if keyword != "" {
@@ -57,9 +55,6 @@ templ LibraryResults(items []repo.SearchSongsRow, keyword string) {
 						if item.Artists != "" {
 							<span class="block text-xs leading-relaxed text-slate-500">{ item.Artists }</span>
 						}
-						<div class="flex items-center gap-2 text-xs text-slate-400">
-							<span class="rounded bg-accent-light px-1.5 py-0.5 text-[0.65rem] font-bold uppercase text-accent">{ strings.TrimPrefix(strings.ToLower(filepath.Ext(item.Path)), ".") }</span>
-						</div>
 					</div>
 				}
 			</div>

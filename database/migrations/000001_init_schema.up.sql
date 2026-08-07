@@ -61,3 +61,5 @@ CREATE TABLE song_artists (
 CREATE INDEX idx_download_status ON downloads(status);
 CREATE INDEX idx_download_created_at ON downloads(created_at DESC);
 CREATE INDEX idx_songs_name ON songs(name);
+CREATE INDEX idx_artists_name ON artists(name);
+CREATE INDEX idx_song_artists_artist_id ON song_artists(artist_id);

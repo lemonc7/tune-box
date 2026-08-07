@@ -29,6 +29,7 @@ type DownloadRequest struct {
 }
 
 type SearchSongsRequest struct {
-	Keyword string `query:"keyword" validate:"required"`
+	Keyword string `query:"keyword"`
+	Offset  int    `query:"offset" validate:"gte=0"`
 	Limit   int    `query:"limit" validate:"required,gte=1"`
 }

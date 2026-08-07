@@ -126,12 +126,13 @@ func (s *Music) Resolve(ctx context.Context, req model.ResolveRequest) (model.Re
 }
 
 func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.DownloadTaskResult, error) {
-	name := strings.TrimSpace(req.Metadata.Name)
+	metadata := req.Metadata
+	name := strings.TrimSpace(metadata.Name)
 	if name == "" {
-		req.Metadata.Name = req.Provider + "-" + req.TrackID
+		metadata.Name = req.Provider + "-" + req.TrackID
 	}
 
-	metadata, err := json.Marshal(req.Metadata)
+	rawMetadata, err := json.Marshal(metadata)
 	if err != nil {
 		return model.DownloadTaskResult{}, fmt.Errorf("encode metadata: %w", err)
 	}
@@ -139,7 +140,7 @@ func (s *Music) Download(ctx context.Context, req model.DownloadRequest) (model.
 		Provider: req.Provider,
 		TrackID:  req.TrackID,
 		Quality:  req.Quality,
-		Metadata: string(metadata),
+		Metadata: string(rawMetadata),
 	})
 	created := true
 	if errors.Is(err, sql.ErrNoRows) {
@@ -522,18 +523,63 @@ func (s *Music) DeleteDownload(ctx context.Context, id int64) error {
 	return s.downloader.RemovePartial(id)
 }
 
-func (s *Music) ListSongs(ctx context.Context, offset, limit int64) ([]repo.ListSongsRow, error) {
-	return s.queries.ListSongs(ctx, repo.ListSongsParams{
-		Offset: offset,
-		Limit:  limit,
-	})
-}
-
-func (s *Music) SearchSongs(ctx context.Context, keyword string, limit int64) ([]repo.SearchSongsRow, error) {
-	return s.queries.SearchSongs(ctx, repo.SearchSongsParams{
-		Keyword: &keyword,
-		Limit:   limit,
-	})
+func (s *Music) SearchSongs(ctx context.Context, keyword string, offset, limit int64) ([]model.Song, error) {
+	words := strings.Fields(keyword)
+	var results []model.Song
+	switch len(words) {
+	case 0:
+		rows, err := s.queries.ListSongs(ctx, repo.ListSongsParams{
+			Offset: offset,
+			Limit:  limit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			results = append(results, model.Song{
+				ID:      row.ID,
+				Name:    row.Name,
+				Artists: row.Artists,
+				Size:    row.Size,
+			})
+		}
+	case 1:
+		rows, err := s.queries.SearchSongs(ctx, repo.SearchSongsParams{
+			Offset:   offset,
+			Limit:    limit,
+			Keyword1: &words[0],
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			results = append(results, model.Song{
+				ID:      row.ID,
+				Name:    row.Name,
+				Artists: row.Artists,
+				Size:    row.Size,
+			})
+		}
+	case 2:
+		rows, err := s.queries.SearchSongs2(ctx, repo.SearchSongs2Params{
+			Offset:   offset,
+			Limit:    limit,
+			Keyword1: &words[0],
+			Keyword2: &words[1],
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			results = append(results, model.Song{
+				ID:      row.ID,
+				Name:    row.Name,
+				Artists: row.Artists,
+				Size:    row.Size,
+			})
+		}
+	}
+	return results, nil
 }
 
 func (s *Music) cancelRunning(id int64) {

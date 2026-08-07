@@ -271,7 +271,7 @@ func (h *Handler) RetryDownload(c *echo.Context) error {
 
 func (h *Handler) LibraryPage(c *echo.Context) error {
 	keyword := strings.TrimSpace(c.QueryParam("q"))
-	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, 200)
+	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, 0, 20)
 	if err != nil {
 		return renderError(c, err)
 	}
@@ -280,7 +280,7 @@ func (h *Handler) LibraryPage(c *echo.Context) error {
 
 func (h *Handler) Library(c *echo.Context) error {
 	keyword := strings.TrimSpace(c.QueryParam("q"))
-	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, 200)
+	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, 0, 20)
 	if err != nil {
 		return renderError(c, err)
 	}

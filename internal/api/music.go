@@ -189,30 +189,6 @@ func (m *MusicHandler) Downloads(c *echo.Context) error {
 	})
 }
 
-func (m *MusicHandler) ListSongs(c *echo.Context) error {
-	var req model.ListRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "bad request").Wrap(err)
-	}
-	if err := c.Validate(&req); err != nil {
-		return err
-	}
-
-	result, err := m.Music.ListSongs(
-		c.Request().Context(),
-		int64(req.Limit),
-		int64(req.Offset),
-	)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-	return c.JSON(http.StatusOK, model.Response{
-		Code: http.StatusOK,
-		Msg:  "ok",
-		Data: result,
-	})
-}
-
 func (m *MusicHandler) SearchSongs(c *echo.Context) error {
 	var req model.SearchSongsRequest
 	if err := c.Bind(&req); err != nil {
@@ -225,6 +201,7 @@ func (m *MusicHandler) SearchSongs(c *echo.Context) error {
 	result, err := m.Music.SearchSongs(
 		c.Request().Context(),
 		req.Keyword,
+		int64(req.Offset),
 		int64(req.Limit),
 	)
 	if err != nil {
