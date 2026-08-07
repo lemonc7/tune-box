@@ -10,7 +10,7 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
-	"github.com/lemonc7/tune-go/repo"
+	"github.com/lemonc7/tune-go/internal/repo"
 	"github.com/lemonc7/tune-go/views/components"
 	"github.com/lemonc7/tune-go/views/layout"
 	"path/filepath"
@@ -97,7 +97,7 @@ func LibraryContent(items []repo.SearchSongsRow, keyword string, count int) temp
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(keyword)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 34, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 35, Col: 19}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -169,7 +169,7 @@ func LibraryResults(items []repo.SearchSongsRow, keyword string) templ.Component
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(item.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 55, Col: 85}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 56, Col: 85}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -182,7 +182,7 @@ func LibraryResults(items []repo.SearchSongsRow, keyword string) templ.Component
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(item.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 55, Col: 99}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 56, Col: 99}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -200,7 +200,7 @@ func LibraryResults(items []repo.SearchSongsRow, keyword string) templ.Component
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(item.Artists)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 57, Col: 80}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 58, Col: 80}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -218,7 +218,7 @@ func LibraryResults(items []repo.SearchSongsRow, keyword string) templ.Component
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(strings.TrimPrefix(strings.ToLower(filepath.Ext(item.Path)), "."))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 60, Col: 173}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 61, Col: 173}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {

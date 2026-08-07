@@ -1,8 +1,8 @@
 -- name: CreateDownload :one
 INSERT INTO downloads (
-    provider, track_id, quality, name, artists, album, cover_url
+    provider, track_id, quality, metadata
 )
-VALUES (?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?)
 ON CONFLICT(provider, track_id, quality) DO NOTHING
 RETURNING *;
 
@@ -69,7 +69,6 @@ WHERE id = ?
 UPDATE downloads
 SET status = 'completed',
     path = ?,
-    size = ?,
     downloaded_bytes = ?,
     total_bytes = ?,
     error_message = NULL,
@@ -140,7 +139,6 @@ SET status = 'pending',
     total_bytes = 0,
     resource_url = NULL,
     path = NULL,
-    size = NULL,
     error_message = NULL,
     started_at = NULL,
     finished_at = NULL,
@@ -149,12 +147,13 @@ WHERE id = ?
   AND status = 'completed';
 
 -- name: UpsertSong :one
-INSERT INTO songs (path, name, extension)
-VALUES (?, ?, ?)
+INSERT INTO songs (path, name, extension, size)
+VALUES (?, ?, ?, ?)
 ON CONFLICT(path) DO UPDATE SET
     name = excluded.name,
     extension = excluded.extension,
-    updated_at = CURRENT_TIMESTAMP
+    updated_at = CURRENT_TIMESTAMP,
+    size = excluded.size
 RETURNING id;
 
 -- name: UpsertArtist :one
@@ -192,7 +191,8 @@ LIMIT @limit;
 SELECT
     s.id,
     s.name,
-    GROUP_CONCAT(a.name, ', ') AS artists
+    GROUP_CONCAT(a.name, ', ') AS artists,
+    s.size
 FROM songs s
 LEFT JOIN song_artists sa
     ON s.id = sa.song_id

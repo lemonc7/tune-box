@@ -11,20 +11,20 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
-	"github.com/lemonc7/tune-go/api"
 	"github.com/lemonc7/tune-go/assets"
 	"github.com/lemonc7/tune-go/config"
 	"github.com/lemonc7/tune-go/database"
-	"github.com/lemonc7/tune-go/download"
-	"github.com/lemonc7/tune-go/mcp"
-	"github.com/lemonc7/tune-go/model"
-	"github.com/lemonc7/tune-go/provider"
-	"github.com/lemonc7/tune-go/provider/kuwo"
-	"github.com/lemonc7/tune-go/provider/netease"
-	"github.com/lemonc7/tune-go/repo"
-	"github.com/lemonc7/tune-go/service"
-	"github.com/lemonc7/tune-go/tag"
-	"github.com/lemonc7/tune-go/web"
+	"github.com/lemonc7/tune-go/internal/api"
+	"github.com/lemonc7/tune-go/internal/download"
+	"github.com/lemonc7/tune-go/internal/mcp"
+	"github.com/lemonc7/tune-go/internal/model"
+	"github.com/lemonc7/tune-go/internal/provider"
+	"github.com/lemonc7/tune-go/internal/provider/kuwo"
+	"github.com/lemonc7/tune-go/internal/provider/netease"
+	"github.com/lemonc7/tune-go/internal/repo"
+	"github.com/lemonc7/tune-go/internal/service"
+	"github.com/lemonc7/tune-go/internal/tag"
+	"github.com/lemonc7/tune-go/internal/web"
 )
 
 // App 保存 HTTP 服务及其需要在退出时释放的资源。
@@ -144,7 +144,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // initRouter 注册健康检查、MCP 和 REST API 路由。
 func (a *App) initRouter(service *service.Music) {
-	resource := &api.ResourceHandler{Music: service}
+	resource := &api.MusicHandler{Music: service}
 	web := &web.Handler{Music: service}
 
 	a.echo.GET("/health", func(c *echo.Context) error {

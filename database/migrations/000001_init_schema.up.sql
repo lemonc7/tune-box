@@ -1,20 +1,32 @@
 CREATE TABLE downloads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- 来源
   provider TEXT NOT NULL,
   track_id TEXT NOT NULL,
   quality TEXT NOT NULL,
-  name TEXT NOT NULL,
-  artists TEXT NOT NULL DEFAULT '[]',
-  album TEXT,
-  cover_url TEXT,
+
+  -- metadata快照
+  metadata TEXT NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'pending'
-    CHECK(status IN ('pending', 'resolving', 'downloading', 'tagging', 'paused', 'completed', 'failed', 'cancelled')),
+    CHECK(status IN (
+        'pending', 
+        'resolving', 
+        'downloading', 
+        'tagging', 
+        'paused', 
+        'completed', 
+        'failed', 
+        'cancelled'
+    )),
+  
+  -- 下载进度
   downloaded_bytes INTEGER NOT NULL DEFAULT 0,
   total_bytes INTEGER NOT NULL DEFAULT 0,
+  -- 重试
   attempt INTEGER NOT NULL DEFAULT 0,
   resource_url TEXT,
   path TEXT,
-  size INTEGER,
+
   error_message TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   started_at TEXT,
@@ -28,6 +40,7 @@ CREATE TABLE songs (
   path TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   extension TEXT NOT NULL,
+  size INTEGER NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

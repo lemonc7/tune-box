@@ -10,8 +10,8 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
-	"github.com/lemonc7/tune-go/model"
-	"github.com/lemonc7/tune-go/provider"
+	"github.com/lemonc7/tune-go/internal/model"
+	"github.com/lemonc7/tune-go/internal/provider"
 	"github.com/lemonc7/tune-go/views/components"
 	"github.com/lemonc7/tune-go/views/layout"
 	"net/url"

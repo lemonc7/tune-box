@@ -2,7 +2,7 @@ package components
 
 import (
 	"fmt"
-	"github.com/lemonc7/tune-go/model"
+	"github.com/lemonc7/tune-go/internal/model"
 )
 
 templ ResolveButton(track model.Track, quality model.Quality) {
@@ -24,7 +24,9 @@ templ ResolveButton(track model.Track, quality model.Quality) {
 		for _,artist := range track.Artists {
 			<input type="hidden" name="artists" value={ artist }/>
 		}
-		<button type="submit" title={ "下载 " + quality.Label }
+		<button
+			type="submit"
+			title={ "下载 " + quality.Label }
 			class="cursor-pointer rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent-dark transition-colors"
 		>
 			<span>下载</span>{ " · " + quality.Label }
@@ -56,11 +58,10 @@ templ ResolveResource(request model.DownloadRequest, resource model.Resource) {
 			<input type="hidden" name="provider" value={ request.Provider }/>
 			<input type="hidden" name="trackId" value={ request.TrackID }/>
 			<input type="hidden" name="quality" value={ request.Quality }/>
-			<input type="hidden" name="name" value={ request.Name }/>
-			<input type="hidden" name="album" value={ request.Album }/>
-			<input type="hidden" name="coverUrl" value={ request.CoverURL }/>
-			<input type="hidden" name="durationMs" value={ fmt.Sprintf("%d", request.DurationMS) }/>
-			for _,artist := range request.Artists {
+			<input type="hidden" name="name" value={ request.Metadata.Name }/>
+			<input type="hidden" name="album" value={ request.Metadata.Album }/>
+			<input type="hidden" name="coverUrl" value={ request.Metadata.CoverURL }/>
+			for _,artist := range request.Metadata.Artists {
 				<input type="hidden" name="artists" value={ artist }/>
 			}
 			<button type="submit" class="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-bold text-white hover:bg-accent-dark transition-colors">加入下载</button>

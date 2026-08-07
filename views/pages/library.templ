@@ -2,7 +2,7 @@ package pages
 
 import (
 	"fmt"
-	"github.com/lemonc7/tune-go/repo"
+	"github.com/lemonc7/tune-go/internal/repo"
 	"github.com/lemonc7/tune-go/views/components"
 	"github.com/lemonc7/tune-go/views/layout"
 	"path/filepath"
@@ -21,7 +21,8 @@ templ LibraryContent(items []repo.SearchSongsRow, keyword string, count int) {
 				<span class="rounded-full bg-accent-light px-3 py-1 text-sm font-bold text-accent">{ fmt.Sprintf("%d 首", count) }</span>
 			}
 		</header>
-		<form class="mb-4 flex gap-3"
+		<form
+			class="mb-4 flex gap-3"
 			hx-get="/web/library"
 			hx-target="#library-results"
 			hx-swap="innerHTML"
