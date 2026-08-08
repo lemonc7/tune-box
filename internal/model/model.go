@@ -93,11 +93,3 @@ type DownloadHistory struct {
 	StartedAt       *string  `json:"startedAt,omitempty"`
 	FinishedAt      *string  `json:"finishedAt,omitempty"`
 }
-
-type Song struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Extension string `json:"extension"`
-	Artists   string `json:"artists"`
-	Size      int64  `json:"size"`
-}

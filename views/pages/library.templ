@@ -2,18 +2,18 @@ package pages
 
 import (
 	"fmt"
-	"github.com/lemonc7/tune-go/internal/model"
+	"github.com/lemonc7/tune-go/internal/repo"
 	"github.com/lemonc7/tune-go/views/components"
 	"github.com/lemonc7/tune-go/views/layout"
 	"net/url"
 	"strconv"
 )
 
-templ LibraryPage(items []model.Song, keyword string, count int) {
+templ LibraryPage(items []repo.SearchSongsRow, keyword string, count int) {
 	@layout.Layout("本地曲库", LibraryContent(items, keyword, count))
 }
 
-templ LibraryContent(items []model.Song, keyword string, count int) {
+templ LibraryContent(items []repo.SearchSongsRow, keyword string, count int) {
 	<section class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm">
 		<header class="mb-4 flex flex-wrap items-center justify-between gap-3">
 			<h1 class="text-2xl font-bold">本地曲库</h1>
@@ -30,8 +30,8 @@ templ LibraryContent(items []model.Song, keyword string, count int) {
 					<span>同步曲库</span>
 					<span class="htmx-indicator ml-1 inline-flex items-center">
 						<svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 						</svg>
 					</span>
 				</button>
@@ -57,7 +57,7 @@ templ LibraryContent(items []model.Song, keyword string, count int) {
 	</section>
 }
 
-templ LibraryResults(items []model.Song, keyword string) {
+templ LibraryResults(items []repo.SearchSongsRow, keyword string) {
 	<div id="library-results">
 		if len(items) == 0 {
 			if keyword != "" {
@@ -90,7 +90,7 @@ templ LibraryResults(items []model.Song, keyword string) {
 	</div>
 }
 
-templ LibraryResultsAppend(items []model.Song, keyword string, offset int) {
+templ LibraryResultsAppend(items []repo.SearchSongsRow, keyword string, offset int) {
 	for _, item := range items {
 		@songRow(item)
 	}
@@ -99,7 +99,7 @@ templ LibraryResultsAppend(items []model.Song, keyword string, offset int) {
 	}
 }
 
-templ songRow(item model.Song) {
+templ songRow(item repo.SearchSongsRow) {
 	<tr class="transition-colors hover:bg-slate-50/50">
 		<td class="px-3 py-3">
 			<span class={ extClass(item.Extension) + " rounded px-1.5 py-0.5 text-[0.65rem] font-bold uppercase" }>{ item.Extension }</span>
@@ -125,13 +125,14 @@ templ librarySentinel(keyword string, offset int) {
 		hx-get={ libraryPageURL(keyword, offset) }
 		hx-trigger="revealed once"
 		hx-swap="afterend"
-		class="border-0"
+		class="!border-0"
+		style="height:1px"
 	>
-		<td colspan="4" class="px-0 py-0 text-center">
-			<span class="htmx-indicator inline-flex items-center gap-1.5 py-1.5 text-xs text-indigo-500">
+		<td colspan="4" class="p-0" style="line-height:0;font-size:0">
+			<span class="htmx-indicator absolute inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-indigo-500" style="margin-top:-16px;line-height:normal;font-size:0.75rem">
 				<svg class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 				</svg>
 				<span>加载中...</span>
 			</span>

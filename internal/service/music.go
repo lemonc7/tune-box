@@ -527,66 +527,25 @@ func (s *Music) CountSongs(ctx context.Context) (int64, error) {
 	return s.queries.CountSongs(ctx)
 }
 
-func (s *Music) SearchSongs(ctx context.Context, keyword string, offset, limit int64) ([]model.Song, error) {
+func (s *Music) SearchSongs(ctx context.Context, keyword string, offset, limit int64) ([]repo.SearchSongsRow, error) {
 	words := strings.Fields(keyword)
-	var results []model.Song
-	switch len(words) {
-	case 0:
-		rows, err := s.queries.ListSongs(ctx, repo.ListSongsParams{
-			Offset: offset,
-			Limit:  limit,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			results = append(results, model.Song{
-				ID:        row.ID,
-				Name:      row.Name,
-				Extension: row.Extension,
-				Artists:   row.Artists,
-				Size:      row.Size,
-			})
-		}
-	case 1:
-		rows, err := s.queries.SearchSongs(ctx, repo.SearchSongsParams{
-			Offset:   offset,
-			Limit:    limit,
-			Keyword1: &words[0],
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			results = append(results, model.Song{
-				ID:        row.ID,
-				Name:      row.Name,
-				Extension: row.Extension,
-				Artists:   row.Artists,
-				Size:      row.Size,
-			})
-		}
-	case 2:
-		rows, err := s.queries.SearchSongs2(ctx, repo.SearchSongs2Params{
-			Offset:   offset,
-			Limit:    limit,
-			Keyword1: &words[0],
-			Keyword2: &words[1],
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			results = append(results, model.Song{
-				ID:        row.ID,
-				Name:      row.Name,
-				Extension: row.Extension,
-				Artists:   row.Artists,
-				Size:      row.Size,
-			})
-		}
+	if len(words) > 2 {
+		return []repo.SearchSongsRow{}, nil
 	}
-	return results, nil
+	var kw1, kw2 string
+	if len(words) >= 1 {
+		kw1 = words[0]
+	}
+	if len(words) == 2 {
+		kw2 = words[1]
+	}
+
+	return s.queries.SearchSongs(ctx, repo.SearchSongsParams{
+		Offset:   offset,
+		Limit:    limit,
+		Keyword1: kw1,
+		Keyword2: kw2,
+	})
 }
 
 func (s *Music) SyncLibrary(ctx context.Context) error {

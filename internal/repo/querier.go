@@ -22,7 +22,6 @@ type Querier interface {
 	GetDownloadByKey(ctx context.Context, arg GetDownloadByKeyParams) (Download, error)
 	ListDownloads(ctx context.Context, arg ListDownloadsParams) ([]Download, error)
 	ListPendingDownloadIDs(ctx context.Context) ([]int64, error)
-	ListSongs(ctx context.Context, arg ListSongsParams) ([]ListSongsRow, error)
 	MarkDownloadCompleted(ctx context.Context, arg MarkDownloadCompletedParams) (int64, error)
 	MarkDownloadDownloading(ctx context.Context, arg MarkDownloadDownloadingParams) (int64, error)
 	MarkDownloadFailed(ctx context.Context, arg MarkDownloadFailedParams) error
@@ -33,7 +32,6 @@ type Querier interface {
 	ResumeDownload(ctx context.Context, id int64) (int64, error)
 	RetryDownload(ctx context.Context, id int64) (int64, error)
 	SearchSongs(ctx context.Context, arg SearchSongsParams) ([]SearchSongsRow, error)
-	SearchSongs2(ctx context.Context, arg SearchSongs2Params) ([]SearchSongs2Row, error)
 	UpdateDownloadProgress(ctx context.Context, arg UpdateDownloadProgressParams) error
 	UpsertArtist(ctx context.Context, name string) (int64, error)
 	UpsertSong(ctx context.Context, arg UpsertSongParams) (int64, error)

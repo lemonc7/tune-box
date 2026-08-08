@@ -10,6 +10,7 @@ import (
 
 	"github.com/lemonc7/tune-go/internal/model"
 	"github.com/lemonc7/tune-go/internal/provider"
+	"github.com/lemonc7/tune-go/internal/repo"
 	"github.com/lemonc7/tune-go/internal/service"
 	protocol "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -75,8 +76,8 @@ type searchLibraryInput struct {
 	Limit int    `json:"limit,omitempty" jsonschema:"返回数量，默认 20，最大 100"`
 }
 type searchLibraryOutput struct {
-	Songs []model.Song `json:"songs"`
-	Count int          `json:"count"`
+	Songs []repo.SearchSongsRow `json:"songs"`
+	Count int                   `json:"count"`
 }
 
 type listInput struct {

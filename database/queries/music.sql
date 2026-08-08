@@ -185,23 +185,27 @@ WHERE song_id = ?;
 -- name: CountSongs :one
 SELECT count(*) FROM songs;
 
--- name: ListSongs :many
-SELECT
-    s.id,
-    s.name,
-    s.extension,
-    GROUP_CONCAT(a.name, ', ') AS artists,
-    s.size
-FROM songs s
-LEFT JOIN song_artists sa
-    ON s.id = sa.song_id
-LEFT JOIN artists a
-    ON sa.artist_id = a.id
-GROUP BY s.id
-ORDER BY s.created_at DESC
-LIMIT @limit OFFSET @offset;
-
 -- name: SearchSongs :many
+WITH matched_songs AS (
+    SELECT DISTINCT s.id
+    FROM songs s
+    LEFT JOIN song_artists sa
+        ON s.id = sa.song_id
+    LEFT JOIN artists a
+        ON sa.artist_id = a.id
+    WHERE
+        (
+            @keyword1 IS NULL
+            OR s.name LIKE '%' || @keyword1 || '%'
+            OR a.name LIKE '%' || @keyword1 || '%'
+        )
+        AND
+        (
+            @keyword2 IS NULL
+            OR s.name LIKE '%' || @keyword2 || '%'
+            OR a.name LIKE '%' || @keyword2 || '%'
+        )
+)
 SELECT
     s.id,
     s.name,
@@ -209,39 +213,12 @@ SELECT
     GROUP_CONCAT(a.name, ', ') AS artists,
     s.size
 FROM songs s
+JOIN matched_songs m
+    ON s.id = m.id
 LEFT JOIN song_artists sa
     ON s.id = sa.song_id
 LEFT JOIN artists a
     ON sa.artist_id = a.id
-WHERE
-    s.name LIKE '%' || @keyword1 || '%'
-    OR a.name LIKE '%' || @keyword1 || '%'
-GROUP BY s.id
-ORDER BY s.created_at DESC
-LIMIT @limit OFFSET @offset;
-
--- name: SearchSongs2 :many
-SELECT
-    s.id,
-    s.name,
-    s.extension,
-    GROUP_CONCAT(a.name, ', ') AS artists,
-    s.size
-FROM songs s
-LEFT JOIN song_artists sa
-    ON s.id = sa.song_id
-LEFT JOIN artists a
-    ON sa.artist_id = a.id
-WHERE
-(
-    s.name LIKE '%' || @keyword1 || '%'
-    OR a.name LIKE '%' || @keyword1 || '%'
-)
-AND
-(
-    s.name LIKE '%' || @keyword2 || '%'
-    OR a.name LIKE '%' || @keyword2 || '%'
-)
 GROUP BY s.id
 ORDER BY s.created_at DESC
 LIMIT @limit OFFSET @offset;

@@ -10,14 +10,14 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
-	"github.com/lemonc7/tune-go/internal/model"
+	"github.com/lemonc7/tune-go/internal/repo"
 	"github.com/lemonc7/tune-go/views/components"
 	"github.com/lemonc7/tune-go/views/layout"
 	"net/url"
 	"strconv"
 )
 
-func LibraryPage(items []model.Song, keyword string, count int) templ.Component {
+func LibraryPage(items []repo.SearchSongsRow, keyword string, count int) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -46,7 +46,7 @@ func LibraryPage(items []model.Song, keyword string, count int) templ.Component 
 	})
 }
 
-func LibraryContent(items []model.Song, keyword string, count int) templ.Component {
+func LibraryContent(items []repo.SearchSongsRow, keyword string, count int) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -119,7 +119,7 @@ func LibraryContent(items []model.Song, keyword string, count int) templ.Compone
 	})
 }
 
-func LibraryResults(items []model.Song, keyword string) templ.Component {
+func LibraryResults(items []repo.SearchSongsRow, keyword string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -186,7 +186,7 @@ func LibraryResults(items []model.Song, keyword string) templ.Component {
 	})
 }
 
-func LibraryResultsAppend(items []model.Song, keyword string, offset int) templ.Component {
+func LibraryResultsAppend(items []repo.SearchSongsRow, keyword string, offset int) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -223,7 +223,7 @@ func LibraryResultsAppend(items []model.Song, keyword string, offset int) templ.
 	})
 }
 
-func songRow(item model.Song) templ.Component {
+func songRow(item repo.SearchSongsRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -375,7 +375,7 @@ func librarySentinel(keyword string, offset int) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" hx-trigger=\"revealed once\" hx-swap=\"afterend\" class=\"border-0\"><td colspan=\"4\" class=\"px-0 py-0 text-center\"><span class=\"htmx-indicator inline-flex items-center gap-1.5 py-1.5 text-xs text-indigo-500\"><svg class=\"animate-spin h-3.5 w-3.5\" viewBox=\"0 0 24 24\" fill=\"none\"><circle class=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" stroke-width=\"4\"></circle> <path class=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z\"></path></svg> <span>加载中...</span></span></td></tr>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" hx-trigger=\"revealed once\" hx-swap=\"afterend\" class=\"!border-0\" style=\"height:1px\"><td colspan=\"4\" class=\"p-0\" style=\"line-height:0;font-size:0\"><span class=\"htmx-indicator absolute inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-indigo-500\" style=\"margin-top:-16px;line-height:normal;font-size:0.75rem\"><svg class=\"animate-spin h-3.5 w-3.5\" viewBox=\"0 0 24 24\" fill=\"none\"><circle class=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" stroke-width=\"4\"></circle> <path class=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z\"></path></svg> <span>加载中...</span></span></td></tr>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
