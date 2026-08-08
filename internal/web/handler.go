@@ -269,6 +269,14 @@ func (h *Handler) RetryDownload(c *echo.Context) error {
 	return h.DownloadList(c)
 }
 
+func (h *Handler) SyncLibrary(c *echo.Context) error {
+	if err := h.Music.SyncLibrary(c.Request().Context()); err != nil {
+		return renderError(c, err)
+	}
+	c.Response().Header().Set("HX-Trigger", "libraryUpdated")
+	return render(c, http.StatusOK, components.Notice("曲库同步完成"))
+}
+
 func (h *Handler) LibraryPage(c *echo.Context) error {
 	keyword := strings.TrimSpace(c.QueryParam("q"))
 	offset := queryInt(c, "offset", 0)
@@ -276,7 +284,8 @@ func (h *Handler) LibraryPage(c *echo.Context) error {
 	if err != nil {
 		return renderError(c, err)
 	}
-	return render(c, http.StatusOK, pages.LibraryPage(items, keyword, len(items)))
+	total, _ := h.Music.CountSongs(c.Request().Context())
+	return render(c, http.StatusOK, pages.LibraryPage(items, keyword, int(total)))
 }
 
 func (h *Handler) Library(c *echo.Context) error {

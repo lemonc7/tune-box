@@ -87,6 +87,8 @@ type downloadsOutput struct {
 	Downloads []model.DownloadHistory `json:"downloads"`
 }
 
+type syncLibraryOutput struct{}
+
 // New 创建无状态的 Streamable HTTP MCP 服务。
 func New(music *service.Music, logger *slog.Logger, token string) http.Handler {
 	server := &Server{
@@ -131,6 +133,7 @@ func (s *Server) registerTools() {
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "cancel_download", Description: "取消下载任务并删除断点。"}, s.cancelDownload)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "retry_download", Description: "重试失败或已取消的下载任务。"}, s.retryDownload)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "delete_download", Description: "删除下载任务记录，不删除已完成的音乐文件。"}, s.deleteDownload)
+	protocol.AddTool(s.mcp, &protocol.Tool{Name: "sync_library", Description: "扫描本地下载目录，将音乐文件同步到曲库索引。"}, s.syncLibrary)
 }
 
 func (s *Server) listProviders(context.Context, *protocol.CallToolRequest, emptyInput) (*protocol.CallToolResult, providersOutput, error) {
@@ -242,6 +245,10 @@ func (s *Server) retryDownload(ctx context.Context, _ *protocol.CallToolRequest,
 func (s *Server) deleteDownload(ctx context.Context, _ *protocol.CallToolRequest, input taskInput) (*protocol.CallToolResult, taskOutput, error) {
 	err := s.music.DeleteDownload(ctx, input.DownloadID)
 	return nil, taskOutput{Result: model.DownloadTaskResult{DownloadID: input.DownloadID, Status: "deleted"}}, err
+}
+
+func (s *Server) syncLibrary(ctx context.Context, _ *protocol.CallToolRequest, _ emptyInput) (*protocol.CallToolResult, syncLibraryOutput, error) {
+	return nil, syncLibraryOutput{}, s.music.SyncLibrary(ctx)
 }
 
 func normalizeListLimit(limit int) (int, error) {

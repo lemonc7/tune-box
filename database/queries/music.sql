@@ -147,18 +147,31 @@ WHERE id = ?
   AND status = 'completed';
 
 -- name: UpsertSong :one
-INSERT INTO songs (path, name, extension, size)
-VALUES (?, ?, ?, ?)
+INSERT INTO songs (path, name, extension, size, scan_token)
+VALUES (?, ?, ?, ?, ?)
 ON CONFLICT(path) DO UPDATE SET
     name = excluded.name,
     extension = excluded.extension,
     updated_at = CURRENT_TIMESTAMP,
-    size = excluded.size
+    size = excluded.size,
+    scan_token = excluded.scan_token
 RETURNING id;
+
+-- name: DeleteStaleSongs :exec
+DELETE FROM songs 
+WHERE scan_token != ?;
+
+-- name: DeleteOrphanArtists :exec
+DELETE FROM artists 
+WHERE id NOT IN (
+  SELECT DISTINCT artist_id 
+  FROM song_artists
+);
 
 -- name: UpsertArtist :one
 INSERT INTO artists (name) 
-VALUES (?) ON CONFLICT(name) DO NOTHING 
+VALUES (?) ON CONFLICT(name) DO UPDATE 
+SET name = excluded.name
 RETURNING id;
 
 -- name: AddSongArtist :exec
@@ -168,6 +181,9 @@ VALUES (?, ?);
 -- name: ClearSongArtists :exec
 DELETE FROM song_artists 
 WHERE song_id = ?;
+
+-- name: CountSongs :one
+SELECT count(*) FROM songs;
 
 -- name: ListSongs :many
 SELECT

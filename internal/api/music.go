@@ -236,3 +236,10 @@ func mapDownloadTaskError(err error) error {
 	}
 	return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 }
+
+func (m *MusicHandler) SyncLibrary(c *echo.Context) error {
+	if err := m.Music.SyncLibrary(c.Request().Context()); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, model.Response{Code: http.StatusOK, Msg: "ok"})
+}

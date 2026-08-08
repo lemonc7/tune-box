@@ -318,6 +318,7 @@ func (s *Music) runDownload(id int64) {
 			ext,
 			info.Size(),
 			metadata.Artists,
+			"",
 		); err != nil {
 			s.logger.Error("record downloaded library file", "path", result.Path, "error", err)
 		}
@@ -331,6 +332,7 @@ func (s *Music) upsertSong(
 	extension string,
 	size int64,
 	artists []string,
+	scanToken string,
 ) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -344,6 +346,7 @@ func (s *Music) upsertSong(
 		Name:      name,
 		Extension: extension,
 		Size:      size,
+		ScanToken: scanToken,
 	})
 	if err != nil {
 		return fmt.Errorf("upsert song: %w", err)
@@ -520,6 +523,10 @@ func (s *Music) DeleteDownload(ctx context.Context, id int64) error {
 	return s.downloader.RemovePartial(id)
 }
 
+func (s *Music) CountSongs(ctx context.Context) (int64, error) {
+	return s.queries.CountSongs(ctx)
+}
+
 func (s *Music) SearchSongs(ctx context.Context, keyword string, offset, limit int64) ([]model.Song, error) {
 	words := strings.Fields(keyword)
 	var results []model.Song
@@ -580,6 +587,111 @@ func (s *Music) SearchSongs(ctx context.Context, keyword string, offset, limit i
 		}
 	}
 	return results, nil
+}
+
+func (s *Music) SyncLibrary(ctx context.Context) error {
+	scanToken := time.Now().Format(time.RFC3339)
+	entries, err := os.ReadDir(model.DOWNLOAD_DIR)
+	if err != nil {
+		return err
+	}
+
+	// 使用事务处理
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	q := s.queries.WithTx(tx)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		filename := entry.Name()
+		fileExt := filepath.Ext(filename)
+		ext := strings.TrimPrefix(strings.ToLower(fileExt), ".")
+		name := strings.TrimSuffix(filename, fileExt)
+		var artists []string
+
+		path := filepath.Join(model.DOWNLOAD_DIR, entry.Name())
+		if ext == "flac" {
+			if info, err := tag.ReadFLACMetadata(path); err == nil {
+				if info.Title != "" {
+					name = info.Title
+				}
+				if len(info.Artists) > 0 {
+					artists = info.Artists
+				}
+			}
+		}
+
+		fileInfo, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		// 插入更新scan token
+		songID, err := q.UpsertSong(ctx, repo.UpsertSongParams{
+			Path:      path,
+			Name:      name,
+			Extension: ext,
+			Size:      fileInfo.Size(),
+			ScanToken: scanToken,
+		})
+		if err != nil {
+			s.logger.Error(
+				"sync library file",
+				"path", path,
+				"error", err,
+			)
+			continue
+		}
+
+		// 清理song_artist表，避免旧缓存(删除某个歌手时，还会残留)
+		if err := q.ClearSongArtists(ctx, songID); err != nil {
+			s.logger.Error(
+				"clear song artists",
+				"path", path,
+				"error", err,
+			)
+			continue
+		}
+		// 重新增加作者项
+		for _, artist := range artists {
+			if artist == "" {
+				continue
+			}
+			// 先插入歌手，确保其存在
+			artistID, err := q.UpsertArtist(ctx, artist)
+			if err != nil {
+				s.logger.Error(
+					"upsert artist",
+					"artist", artist,
+					"error", err,
+				)
+				continue
+			}
+			// 给歌曲设置歌手
+			if err := q.AddSongArtist(ctx, repo.AddSongArtistParams{
+				SongID:   songID,
+				ArtistID: artistID,
+			}); err != nil {
+				s.logger.Error("add song artist", "error", err)
+			}
+		}
+	}
+
+	// 删除本地曲库不存在的歌曲
+	if err := q.DeleteStaleSongs(ctx, scanToken); err != nil {
+		return fmt.Errorf("delete stale songs: %w", err)
+	}
+	// 删除残留的歌手记录(未被歌曲依赖的)
+	if err := q.DeleteOrphanArtists(ctx); err != nil {
+		s.logger.Error("delete orphan artists", "error", err)
+	}
+
+	return tx.Commit()
 }
 
 func (s *Music) cancelRunning(id int64) {

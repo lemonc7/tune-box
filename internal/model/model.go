@@ -1,5 +1,7 @@
 package model
 
+const DOWNLOAD_DIR = "downloads"
+
 // Quality 描述平台提供的一种音频质量。
 type Quality struct {
 	ID       string `json:"id"`

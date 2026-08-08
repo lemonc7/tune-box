@@ -67,7 +67,7 @@ func LibraryContent(items []model.Song, keyword string, count int) templ.Compone
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm\"><header class=\"mb-4 flex flex-wrap items-center justify-between gap-3\"><h1 class=\"text-2xl font-bold\">本地曲库</h1>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm\"><header class=\"mb-4 flex flex-wrap items-center justify-between gap-3\"><h1 class=\"text-2xl font-bold\">本地曲库</h1><div class=\"flex items-center gap-3\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -79,25 +79,25 @@ func LibraryContent(items []model.Song, keyword string, count int) templ.Compone
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d 首", count))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 21, Col: 118}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 22, Col: 119}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</header><form class=\"mb-5 flex gap-3\" hx-get=\"/web/library\" hx-target=\"#library-results\" hx-swap=\"innerHTML\" hx-trigger=\"input changed delay:300ms from:find input, search\"><input type=\"search\" name=\"q\" placeholder=\"搜索歌名或艺人...\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<button hx-post=\"/web/library/sync\" hx-swap=\"none\" hx-indicator=\"find .htmx-indicator\" class=\"cursor-pointer rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-200 transition-colors\"><span>同步曲库</span> <span class=\"htmx-indicator ml-1 inline-flex items-center\"><svg class=\"animate-spin h-3 w-3\" viewBox=\"0 0 24 24\" fill=\"none\"><circle class=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" stroke-width=\"4\"></circle> <path class=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z\"></path></svg></span></button></div></header><form class=\"mb-5 flex gap-3\" hx-get=\"/web/library\" hx-target=\"#library-results\" hx-swap=\"innerHTML\" hx-trigger=\"input changed delay:300ms from:find input, search\"><input type=\"search\" name=\"q\" placeholder=\"搜索歌名或艺人...\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(keyword)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 35, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 51, Col: 19}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -273,7 +273,7 @@ func songRow(item model.Song) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(item.Extension)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 89, Col: 122}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 105, Col: 122}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -286,7 +286,7 @@ func songRow(item model.Song) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(item.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 92, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 108, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -304,7 +304,7 @@ func songRow(item model.Song) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(item.Artists)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 96, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 112, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -327,7 +327,7 @@ func songRow(item model.Song) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(formatSize(item.Size))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 102, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 118, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -369,13 +369,13 @@ func librarySentinel(keyword string, offset int) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(libraryPageURL(keyword, offset))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 109, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/pages/library.templ`, Line: 125, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" hx-trigger=\"revealed once\" hx-swap=\"afterend\"><td colspan=\"4\" class=\"px-3 py-3 text-center\"><span class=\"htmx-indicator inline-flex items-center gap-1.5 text-xs text-indigo-500\"><svg class=\"animate-spin h-3.5 w-3.5\" viewBox=\"0 0 24 24\" fill=\"none\"><circle class=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" stroke-width=\"4\"></circle> <path class=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z\"></path></svg> <span>加载中...</span></span></td></tr>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" hx-trigger=\"revealed once\" hx-swap=\"afterend\" class=\"border-0\"><td colspan=\"4\" class=\"px-0 py-0 text-center\"><span class=\"htmx-indicator inline-flex items-center gap-1.5 py-1.5 text-xs text-indigo-500\"><svg class=\"animate-spin h-3.5 w-3.5\" viewBox=\"0 0 24 24\" fill=\"none\"><circle class=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" stroke-width=\"4\"></circle> <path class=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z\"></path></svg> <span>加载中...</span></span></td></tr>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

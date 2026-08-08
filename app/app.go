@@ -172,6 +172,7 @@ func (a *App) initRouter(service *service.Music, mcpToken string) {
 	api.POST("/downloads/:id/cancel", resource.CancelDownload)
 	api.POST("/downloads/:id/retry", resource.RetryDownload)
 	api.DELETE("/downloads/:id", resource.DeleteDownload)
+	api.POST("/library/sync", resource.SyncLibrary)
 
 	a.echo.GET("/", web.Home)
 	a.echo.GET("/downloads", web.DownloadsPage)
@@ -188,6 +189,7 @@ func (a *App) initRouter(service *service.Music, mcpToken string) {
 	wg.POST("/downloads/:id/cancel", web.CancelDownload)
 	wg.POST("/downloads/:id/retry", web.RetryDownload)
 	wg.GET("/library", web.Library)
+	wg.POST("/library/sync", web.SyncLibrary)
 
 	a.echo.StaticFS("/assets", assets.Assets)
 }

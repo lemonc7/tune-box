@@ -20,8 +20,6 @@ import (
 
 var invalidFileChars = regexp.MustCompile(`[\\/:*?"<>|\x00-\x1f]`)
 
-const downloadDir = "downloads"
-
 // Downloader 负责将 Provider 给出的临时资源安全地保存到本地。
 type Downloader struct {
 	client   *http.Client
@@ -40,7 +38,7 @@ type Options struct {
 
 // New 创建下载器；maxBytes 是单个文件允许写入的最大字节数。
 func New(client *http.Client, maxBytes int64) *Downloader {
-	return &Downloader{client: client, dir: downloadDir, maxBytes: maxBytes}
+	return &Downloader{client: client, dir: model.DOWNLOAD_DIR, maxBytes: maxBytes}
 }
 
 // Download 下载并校验音频。临时文件使用任务 ID 命名，中断后可以继续下载。

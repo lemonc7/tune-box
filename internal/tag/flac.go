@@ -331,3 +331,69 @@ func copyWithContext(ctx context.Context, destination io.Writer, source io.Reade
 		}
 	}
 }
+
+type FLACInfo struct {
+	Title   string
+	Artists []string
+}
+
+func ReadFLACMetadata(path string) (FLACInfo, error) {
+	input, err := os.Open(path)
+	if err != nil {
+		return FLACInfo{}, err
+	}
+	defer input.Close()
+	reader := bufio.NewReader(input)
+	magic := make([]byte, 4)
+	if _, err := io.ReadFull(reader, magic); err != nil || string(magic) != "fLaC" {
+		return FLACInfo{}, fmt.Errorf("not a valid FLAC file")
+	}
+	for {
+		header := make([]byte, 4)
+		if _, err := io.ReadFull(reader, header); err != nil {
+			return FLACInfo{}, fmt.Errorf("read FLAC header: %w", err)
+		}
+		last := header[0]&0x80 != 0
+		typeID := header[0] & 0x7f
+		length := int(header[1])<<16 | int(header[2])<<8 | int(header[3])
+		data := make([]byte, length)
+		if _, err := io.ReadFull(reader, data); err != nil {
+			return FLACInfo{}, fmt.Errorf("read FLAC block: %w", err)
+		}
+		if typeID == 4 {
+			_, comments, err := parseVorbisComment(data)
+			if err != nil {
+				return FLACInfo{}, err
+			}
+			info := FLACInfo{}
+			for _, c := range comments {
+				key, value, found := strings.Cut(c, "=")
+				if !found {
+					continue
+				}
+				switch strings.ToUpper(key) {
+				case "TITLE":
+					info.Title = strings.TrimSpace(value)
+				case "ARTIST":
+					info.Artists = splitArtists(value)
+				}
+			}
+			return info, nil
+		}
+		if last {
+			break
+		}
+	}
+	return FLACInfo{}, nil
+}
+
+func splitArtists(value string) []string {
+	parts := strings.Split(value, ";")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
