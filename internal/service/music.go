@@ -20,12 +20,12 @@ import (
 	"github.com/lemonc7/tune-go/internal/tag"
 )
 
-var ErrDownloadState = errors.New("当前任务状态不支持该操作")
+var ErrDownloadState = errors.New("unsupported operation of current task status")
 
 type Music struct {
 	db         *sql.DB
 	queries    *repo.Queries
-	registry   *provider.Registry
+	providers  map[string]provider.Provider
 	downloader *download.Downloader
 	embedder   *tag.Embedder
 	logger     *slog.Logger
@@ -41,7 +41,7 @@ type Music struct {
 func NewMusic(
 	db *sql.DB,
 	queries *repo.Queries,
-	registry *provider.Registry,
+	providers map[string]provider.Provider,
 	downloader *download.Downloader,
 	embedder *tag.Embedder,
 	workers int,
@@ -50,7 +50,7 @@ func NewMusic(
 	return &Music{
 		db:         db,
 		queries:    queries,
-		registry:   registry,
+		providers:  providers,
 		downloader: downloader,
 		embedder:   embedder,
 		workers:    workers,
@@ -60,11 +60,27 @@ func NewMusic(
 	}
 }
 
+func (c *Music) getProvider(provider string) (provider.Provider, error) {
+	p, ok := c.providers[provider]
+	if !ok {
+		return nil, fmt.Errorf("provider not found: %s", provider)
+	}
+	return p, nil
+}
+
+func (c *Music) Providers() []string {
+	var providers []string
+	for _, p := range c.providers {
+		providers = append(providers, p.Name())
+	}
+	return providers
+}
+
 func (s *Music) Start(ctx context.Context) error {
 	// 应用启动，重新启动未完成的任务
 	if err := s.queries.ResetInterruptedDownloads(
 		ctx,
-		new("服务重启，任务已重新入队"),
+		new("service restarted, task requeued"),
 	); err != nil {
 		return err
 	}
@@ -92,10 +108,8 @@ func (s *Music) Close() {
 	}
 }
 
-func (s *Music) Providers() []provider.Info { return s.registry.List() }
-
 func (s *Music) Search(ctx context.Context, req model.SearchRequest) (model.SearchResult, error) {
-	item, err := s.registry.Get(req.Provider)
+	item, err := s.getProvider(req.Provider)
 	if err != nil {
 		return model.SearchResult{}, err
 	}
@@ -115,7 +129,7 @@ func (s *Music) Search(ctx context.Context, req model.SearchRequest) (model.Sear
 }
 
 func (s *Music) Resolve(ctx context.Context, req model.ResolveRequest) (model.Resource, error) {
-	item, err := s.registry.Get(req.Provider)
+	item, err := s.getProvider(req.Provider)
 	if err != nil {
 		return model.Resource{}, err
 	}
@@ -171,7 +185,7 @@ func (s *Music) enqueue(ctx context.Context, id int64) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-s.ctx.Done():
-		return errors.New("download service is stopped")
+		return fmt.Errorf("download service is stopped")
 	}
 }
 
@@ -232,7 +246,7 @@ func (s *Music) runDownload(id int64) {
 	}
 	lastUpdate := time.Time{}
 
-	var metadata model.MusicMetadata
+	var metadata model.Metadata
 	if err := json.Unmarshal([]byte(row.Metadata), &metadata); err != nil {
 		s.failDownload(id, err)
 		return
@@ -272,7 +286,7 @@ func (s *Music) runDownload(id int64) {
 				return nil
 			}
 
-			item, err := s.registry.Get(row.Provider)
+			item, err := s.getProvider(row.Provider)
 			if err != nil {
 				return err
 			}
@@ -385,7 +399,7 @@ func (s *Music) ListDownloads(ctx context.Context, limit, offset int64) ([]model
 	}
 	result := make([]model.DownloadHistory, 0, len(rows))
 	for _, row := range rows {
-		var metadata model.MusicMetadata
+		var metadata model.Metadata
 		if err := json.Unmarshal([]byte(row.Metadata), &metadata); err != nil {
 			return nil, fmt.Errorf("decode download metadata: %w", err)
 		}
@@ -453,7 +467,7 @@ func (s *Music) ResumeDownload(ctx context.Context, id int64) (model.DownloadTas
 	case <-ctx.Done():
 		return model.DownloadTaskResult{}, ctx.Err()
 	case <-s.ctx.Done():
-		return model.DownloadTaskResult{}, errors.New("download service is stopped")
+		return model.DownloadTaskResult{}, fmt.Errorf("download service is stopped")
 	}
 	return model.DownloadTaskResult{DownloadID: id, Status: "pending"}, nil
 }
@@ -461,7 +475,7 @@ func (s *Music) ResumeDownload(ctx context.Context, id int64) (model.DownloadTas
 func (s *Music) CancelDownload(ctx context.Context, id int64) (model.DownloadTaskResult, error) {
 	changed, err := s.queries.CancelDownload(ctx, repo.CancelDownloadParams{
 		ID:           id,
-		ErrorMessage: new("任务已取消")})
+		ErrorMessage: new("task has been cancelled")})
 	if err != nil {
 		return model.DownloadTaskResult{}, err
 	}
@@ -507,7 +521,7 @@ func (s *Music) DeleteDownload(ctx context.Context, id int64) error {
 	if row.Status == "resolving" || row.Status == "downloading" || row.Status == "tagging" {
 		if _, err := s.queries.CancelDownload(ctx, repo.CancelDownloadParams{
 			ID:           id,
-			ErrorMessage: new("任务已取消")},
+			ErrorMessage: new("task has been deleted")},
 		); err != nil {
 			return err
 		}
@@ -669,6 +683,10 @@ func (s *Music) failDownload(id int64, cause error) {
 		ID:           id,
 		ErrorMessage: new(cause.Error()),
 	}); err != nil {
-		s.logger.Error("mark download failed", "downloadId", id, "error", err)
+		s.logger.Error(
+			"mark download failed",
+			"downloadId", id,
+			"error", err,
+		)
 	}
 }

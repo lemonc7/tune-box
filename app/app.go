@@ -14,7 +14,6 @@ import (
 	"github.com/lemonc7/tune-go/assets"
 	"github.com/lemonc7/tune-go/config"
 	"github.com/lemonc7/tune-go/database"
-	"github.com/lemonc7/tune-go/internal/api"
 	"github.com/lemonc7/tune-go/internal/download"
 	"github.com/lemonc7/tune-go/internal/mcp"
 	"github.com/lemonc7/tune-go/internal/model"
@@ -83,21 +82,12 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 			return
 		}
 
-		c.JSON(status, model.Response{
-			Code: status,
-			Msg:  msg,
-		})
+		c.JSON(status, map[string]string{"error": msg})
 	}
 
 	client := &http.Client{Timeout: cfg.Server.HTTPTimeout}
 	downloadClient := &http.Client{Timeout: cfg.Server.DownloadTimeout}
-	registry := provider.NewRegistry(
-		kuwo.New(
-			client,
-			cfg.Providers.Kuwo.SearchURL,
-			cfg.Providers.Kuwo.ResolveURL,
-		),
-	)
+
 	store, err := database.New(cfg.Database)
 	if err != nil {
 		return nil, fmt.Errorf("initialize database: %w", err)
@@ -108,10 +98,20 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		downloadClient,
 		cfg.Download.MaxBytes,
 	)
+
+	kuwoProvider := kuwo.New(
+		client,
+		cfg.Providers.Kuwo.SearchURL,
+		cfg.Providers.Kuwo.ResolveURL,
+		cfg.Providers.Kuwo.LyricURL,
+	)
+
 	musicService := service.NewMusic(
 		db,
 		queries,
-		registry,
+		map[string]provider.Provider{
+			kuwoProvider.Name(): kuwoProvider,
+		},
 		downloader,
 		tag.New(client),
 		cfg.Download.MaxConcurrent,
@@ -148,7 +148,6 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // initRouter 注册健康检查、MCP 和 REST API 路由。
 func (a *App) initRouter(service *service.Music, mcpToken string) {
-	resource := &api.MusicHandler{Music: service}
 	web := &web.Handler{Music: service}
 
 	a.echo.GET("/health", func(c *echo.Context) error {
@@ -156,40 +155,25 @@ func (a *App) initRouter(service *service.Music, mcpToken string) {
 	})
 
 	a.echo.Any("/mcp", echo.WrapHandler(mcp.New(
-		resource.Music,
+		service,
 		a.logger,
 		mcpToken,
 	)))
 
-	api := a.echo.Group("/api")
-	api.GET("/providers", resource.Providers)
-	api.GET("/search", resource.Search)
-	api.POST("/resolve", resource.Resolve)
-	api.POST("/download", resource.Download)
-	api.GET("/downloads", resource.Downloads)
-	api.POST("/downloads/:id/pause", resource.PauseDownload)
-	api.POST("/downloads/:id/resume", resource.ResumeDownload)
-	api.POST("/downloads/:id/cancel", resource.CancelDownload)
-	api.POST("/downloads/:id/retry", resource.RetryDownload)
-	api.DELETE("/downloads/:id", resource.DeleteDownload)
-	api.POST("/library/sync", resource.SyncLibrary)
-
 	a.echo.GET("/", web.Home)
 	a.echo.GET("/downloads", web.DownloadsPage)
 	a.echo.GET("/library", web.LibraryPage)
+	a.echo.GET("/search", web.Search)
 
-	wg := a.echo.Group("/web")
-	wg.GET("/search", web.Search)
-	wg.POST("/resolve", web.Resolve)
-
-	wg.GET("/downloads", web.DownloadList)
-	wg.POST("/downloads", web.CreateDownload)
-	wg.POST("/downloads/:id/pause", web.PauseDownload)
-	wg.POST("/downloads/:id/resume", web.ResumeDownload)
-	wg.POST("/downloads/:id/cancel", web.CancelDownload)
-	wg.POST("/downloads/:id/retry", web.RetryDownload)
-	wg.GET("/library", web.Library)
-	wg.POST("/library/sync", web.SyncLibrary)
+	a.echo.POST("/resolve", web.Resolve)
+	a.echo.POST("/downloads", web.CreateDownload)
+	a.echo.GET("/downloads/list", web.DownloadList)
+	a.echo.POST("/downloads/:id/pause", web.PauseDownload)
+	a.echo.POST("/downloads/:id/resume", web.ResumeDownload)
+	a.echo.POST("/downloads/:id/cancel", web.CancelDownload)
+	a.echo.POST("/downloads/:id/retry", web.RetryDownload)
+	a.echo.GET("/library/items", web.LibraryItems)
+	a.echo.POST("/library/sync", web.SyncLibrary)
 
 	a.echo.StaticFS("/assets", assets.Assets)
 }

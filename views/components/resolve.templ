@@ -8,7 +8,7 @@ import (
 templ ResolveButton(track model.Track, quality model.Quality) {
 	<form
 		class="inline-flex items-center gap-1"
-		hx-post="/web/downloads"
+		hx-post="/downloads"
 		hx-target={ "#resolve-" + track.Provider + "-" + track.ID }
 		hx-swap="innerHTML"
 		hx-indicator="find .htmx-indicator"
@@ -35,8 +35,8 @@ templ ResolveButton(track model.Track, quality model.Quality) {
 		</button>
 		<span class="htmx-indicator inline-flex items-center gap-1 text-xs text-indigo-600">
 			<svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 			</svg>
 		</span>
 	</form>
@@ -54,7 +54,7 @@ templ ResolveResource(request model.DownloadRequest, resource model.Resource) {
 			<p class="text-xs text-slate-500">资源有效期: { resource.ExpiresAt }</p>
 		}
 		<form
-			hx-post="/web/downloads"
+			hx-post="/downloads"
 			hx-target="closest .resolved-resource"
 			hx-swap="outerHTML"
 			hx-disabled-elt="find button"

@@ -19,3 +19,4 @@ providers:
   kuwo:
     search_url: https://search.kuwo.cn/r.s
     resolve_url: https://mobi.kuwo.cn/mobi.s
+    lyric_url: https://www.kuwo.cn/openapi/v1/www/lyric/getlyric

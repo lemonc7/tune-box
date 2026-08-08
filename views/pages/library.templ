@@ -9,20 +9,22 @@ import (
 	"strconv"
 )
 
-templ LibraryPage(items []repo.SearchSongsRow, keyword string, count int) {
-	@layout.Layout("本地曲库", LibraryContent(items, keyword, count))
+templ LibraryPage(items []repo.SearchSongsRow, count int) {
+	@layout.Layout("本地曲库", LibraryContent(items, count))
 }
 
-templ LibraryContent(items []repo.SearchSongsRow, keyword string, count int) {
+templ LibraryContent(items []repo.SearchSongsRow, count int) {
 	<section class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm">
 		<header class="mb-4 flex flex-wrap items-center justify-between gap-3">
 			<h1 class="text-2xl font-bold">本地曲库</h1>
 			<div class="flex items-center gap-3">
 				if count > 0 {
-					<span class="rounded-full bg-indigo-50 px-3 py-1 text-sm font-bold text-indigo-600">{ fmt.Sprintf("%d 首", count) }</span>
+					<span class="rounded-full bg-indigo-50 px-3 py-1 text-sm font-bold text-indigo-600">
+						{ fmt.Sprintf("%d 首", count) }
+					</span>
 				}
 				<button
-					hx-post="/web/library/sync"
+					hx-post="/library/sync"
 					hx-swap="none"
 					hx-indicator="find .htmx-indicator"
 					class="cursor-pointer rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-200 transition-colors"
@@ -39,7 +41,7 @@ templ LibraryContent(items []repo.SearchSongsRow, keyword string, count int) {
 		</header>
 		<form
 			class="mb-5 flex gap-3"
-			hx-get="/web/library"
+			hx-get="/library/items"
 			hx-target="#library-results"
 			hx-swap="innerHTML"
 			hx-trigger="input changed delay:300ms from:find input, search"
@@ -48,54 +50,58 @@ templ LibraryContent(items []repo.SearchSongsRow, keyword string, count int) {
 				type="search"
 				name="q"
 				placeholder="搜索歌名或艺人..."
-				value={ keyword }
 				autocomplete="off"
 				class="w-full max-w-sm rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm shadow-xs focus:border-indigo-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-600/20"
 			/>
+			<input
+				type="hidden"
+				name="limit"
+				value="20"
+			/>
 		</form>
-		@LibraryResults(items, keyword)
+		<table class="w-full text-sm">
+			<thead>
+				<tr class="border-b border-slate-200 text-left text-xs font-semibold uppercase text-slate-400">
+					<th class="w-20 px-3 py-2.5">格式</th>
+					<th class="px-3 py-2.5">歌曲</th>
+					<th class="hidden px-3 py-2.5 sm:table-cell">艺人</th>
+					<th class="hidden whitespace-nowrap px-3 py-2.5 text-right md:table-cell">大小</th>
+				</tr>
+			</thead>
+			<tbody
+				id="library-results"
+				class="divide-y divide-slate-100"
+			>
+				// 首屏直接渲染第一页数据
+				@LibraryRows(items, "", 0)
+			</tbody>
+		</table>
 	</section>
 }
 
-templ LibraryResults(items []repo.SearchSongsRow, keyword string) {
-	<div id="library-results">
-		if len(items) == 0 {
-			if keyword != "" {
-				@components.Empty("没有找到匹配的歌曲")
-			} else {
-				@components.Empty("曲库为空，下载音乐后自动收录")
-			}
-		} else {
-			<div class="overflow-x-auto">
-				<table class="w-full text-sm">
-					<thead>
-						<tr class="border-b border-slate-200 text-left text-xs font-semibold uppercase text-slate-400">
-							<th class="w-20 px-3 py-2.5">格式</th>
-							<th class="px-3 py-2.5">歌曲</th>
-							<th class="hidden px-3 py-2.5 sm:table-cell">艺人</th>
-							<th class="hidden whitespace-nowrap px-3 py-2.5 text-right md:table-cell">大小</th>
-						</tr>
-					</thead>
-					<tbody class="divide-y divide-slate-100">
-						for _, item := range items {
-							@songRow(item)
-						}
-						if len(items) >= 20 {
-							@librarySentinel(keyword, 20)
-						}
-					</tbody>
-				</table>
-			</div>
+templ LibraryRows(
+	items []repo.SearchSongsRow,
+	keyword string,
+	offset int,
+) {
+	if len(items) == 0 && offset == 0 {
+		<tr>
+			<td colspan="4">
+				if keyword != "" {
+					@components.Empty("没有找到匹配的歌曲")
+				} else {
+					@components.Empty("曲库为空")
+				}
+			</td>
+		</tr>
+	} else {
+		for _,item := range items {
+			@songRow(item)
 		}
-	</div>
-}
-
-templ LibraryResultsAppend(items []repo.SearchSongsRow, keyword string, offset int) {
-	for _, item := range items {
-		@songRow(item)
-	}
-	if len(items) >= 20 {
-		@librarySentinel(keyword, offset+20)
+		// 如果返回的条数达到limit，说明还有下一页，渲染sentinel
+		if len(items) >= 20 {
+			@librarySentinel(keyword, offset+len(items))
+		}
 	}
 }
 
@@ -124,15 +130,37 @@ templ librarySentinel(keyword string, offset int) {
 	<tr
 		hx-get={ libraryPageURL(keyword, offset) }
 		hx-trigger="revealed once"
-		hx-swap="afterend"
+		hx-swap="outerHTML"
 		class="!border-0"
 		style="height:1px"
 	>
-		<td colspan="4" class="p-0" style="line-height:0;font-size:0">
-			<span class="htmx-indicator absolute inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-indigo-500" style="margin-top:-16px;line-height:normal;font-size:0.75rem">
-				<svg class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+		<td
+			colspan="4"
+			class="p-0 text-center"
+			style="line-height:0;font-size:0"
+		>
+			<span
+				class="htmx-indicator absolute inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-indigo-500"
+				style="margin-top:-16px;line-height:normal;font-size:0.75rem"
+			>
+				<svg
+					class="animate-spin h-3.5 w-3.5"
+					viewBox="0 0 24 24"
+					fill="none"
+				>
+					<circle
+						class="opacity-25"
+						cx="12"
+						cy="12"
+						r="10"
+						stroke="currentColor"
+						stroke-width="4"
+					></circle>
+					<path
+						class="opacity-75"
+						fill="currentColor"
+						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+					></path>
 				</svg>
 				<span>加载中...</span>
 			</span>
@@ -147,7 +175,7 @@ func libraryPageURL(keyword string, offset int) string {
 	if keyword != "" {
 		values.Set("q", keyword)
 	}
-	return "/web/library?" + values.Encode()
+	return "/library/items?" + values.Encode()
 }
 
 func extClass(ext string) string {

@@ -81,15 +81,16 @@ type Providers struct {
 type Kuwo struct {
 	SearchURL  string `yaml:"search_url" env:"KUWO_SEARCH_URL"`
 	ResolveURL string `yaml:"resolve_url" env:"KUWO_RESOLVE_URL"`
+	LyricURL   string `yaml:"lyric_url" env:"KUWO_LYRIC_URL"`
 }
 
 // Database 定义 SQLite 连接池和锁等待配置。
 type Database struct {
-	MaxOpenConns    int           `yaml:"max_open_conns" env:"TUNE_GO_DB_MAX_OPEN_CONNS" env-default:"4"`
-	MaxIdleConns    int           `yaml:"max_idle_conns" env:"TUNE_GO_DB_MAX_IDLE_CONNS" env-default:"4"`
-	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"TUNE_GO_DB_CONN_MAX_LIFETIME" env-default:"0s"`
-	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time" env:"TUNE_GO_DB_CONN_MAX_IDLE_TIME" env-default:"0s"`
-	BusyTimeout     time.Duration `yaml:"busy_timeout" env:"TUNE_GO_DB_BUSY_TIMEOUT" env-default:"5s"`
+	MaxOpenConns    int           `yaml:"max_open_conns" env:"DB_MAX_OPEN_CONNS" env-default:"4"`
+	MaxIdleConns    int           `yaml:"max_idle_conns" env:"DB_MAX_IDLE_CONNS" env-default:"4"`
+	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"DB_CONN_MAX_LIFETIME" env-default:"0s"`
+	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time" env:"DB_CONN_MAX_IDLE_TIME" env-default:"0s"`
+	BusyTimeout     time.Duration `yaml:"busy_timeout" env:"DB_BUSY_TIMEOUT" env-default:"5s"`
 }
 
 func (d *Database) validate() error {

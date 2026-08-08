@@ -42,7 +42,7 @@ func New(client *http.Client) *Embedder { return &Embedder{client: client} }
 func (e *Embedder) EmbedFLAC(
 	ctx context.Context,
 	path string,
-	metadata model.MusicMetadata,
+	metadata model.Metadata,
 	lyrics string,
 ) error {
 	var cover []byte

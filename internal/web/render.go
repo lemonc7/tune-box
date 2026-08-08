@@ -1,11 +1,8 @@
 package web
 
 import (
-	"net/http"
-
 	"github.com/a-h/templ"
 	"github.com/labstack/echo/v5"
-	"github.com/lemonc7/tune-go/views/components"
 )
 
 func render(
@@ -25,8 +22,8 @@ func render(
 	)
 }
 
-func renderError(c *echo.Context, err error) error {
-	// htmx 默认不会交换 4xx 响应，所以参考版本使用 200，
-	// 确保错误组件能够进入 hx-target。
-	return render(c, http.StatusOK, components.ErrorNotice(err.Error()))
-}
+// func renderError(c *echo.Context, err error) error {
+// 	// htmx 默认不会交换 4xx 响应，所以参考版本使用 200，
+// 	// 确保错误组件能够进入 hx-target。
+// 	return render(c, http.StatusOK, components.ErrorNotice(err.Error()))
+// }

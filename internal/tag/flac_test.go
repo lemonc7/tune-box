@@ -47,7 +47,7 @@ func TestEmbedFLAC(t *testing.T) {
 			ContentLength: int64(cover.Len()),
 		}, nil
 	})}
-	metadata := model.MusicMetadata{
+	metadata := model.Metadata{
 		Name:     "晴天",
 		Artists:  []string{"周杰伦"},
 		Album:    "叶惠美",

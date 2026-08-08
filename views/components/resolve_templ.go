@@ -34,7 +34,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<form class=\"inline-flex items-center gap-1\" hx-post=\"/web/downloads\" hx-target=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<form class=\"inline-flex items-center gap-1\" hx-post=\"/downloads\" hx-target=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -301,7 +301,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<form hx-post=\"/web/downloads\" hx-target=\"closest .resolved-resource\" hx-swap=\"outerHTML\" hx-disabled-elt=\"find button\"><input type=\"hidden\" name=\"provider\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<form hx-post=\"/downloads\" hx-target=\"closest .resolved-resource\" hx-swap=\"outerHTML\" hx-disabled-elt=\"find button\"><input type=\"hidden\" name=\"provider\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -3,13 +3,12 @@ package mcp
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/lemonc7/tune-go/internal/model"
-	"github.com/lemonc7/tune-go/internal/provider"
 	"github.com/lemonc7/tune-go/internal/repo"
 	"github.com/lemonc7/tune-go/internal/service"
 	protocol "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -23,9 +22,6 @@ type Server struct {
 }
 
 type emptyInput struct{}
-type providersOutput struct {
-	Providers []provider.Info `json:"providers"`
-}
 
 type searchInput struct {
 	Provider string `json:"provider" jsonschema:"音乐源名称，目前支持 kuwo"`
@@ -123,7 +119,6 @@ func mcpAuth(next http.Handler, token string) http.Handler {
 
 func (s *Server) registerTools() {
 	// MCP 只负责参数和协议转换，具体业务统一交给 service.Music。
-	protocol.AddTool(s.mcp, &protocol.Tool{Name: "list_providers", Description: "列出 Tune Go 已注册的音乐源及其可用状态。"}, s.listProviders)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "search_music", Description: "从指定音乐源搜索歌曲；返回歌曲 ID 和可选音质。"}, s.searchMusic)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "search_library", Description: "查询本地曲库中已存在的歌曲；下载前应调用此工具检查，避免重复下载。"}, s.searchLibrary)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "resolve_music", Description: "解析临时资源信息，仅用于检查资源，不写入文件。"}, s.resolveMusic)
@@ -137,13 +132,9 @@ func (s *Server) registerTools() {
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "sync_library", Description: "扫描本地下载目录，将音乐文件同步到曲库索引。"}, s.syncLibrary)
 }
 
-func (s *Server) listProviders(context.Context, *protocol.CallToolRequest, emptyInput) (*protocol.CallToolResult, providersOutput, error) {
-	return nil, providersOutput{Providers: s.music.Providers()}, nil
-}
-
 func (s *Server) searchMusic(ctx context.Context, _ *protocol.CallToolRequest, input searchInput) (*protocol.CallToolResult, searchOutput, error) {
 	if strings.TrimSpace(input.Query) == "" {
-		return nil, searchOutput{}, errors.New("query is required")
+		return nil, searchOutput{}, fmt.Errorf("query is required")
 	}
 	if input.Page == 0 {
 		input.Page = 1
@@ -152,10 +143,10 @@ func (s *Server) searchMusic(ctx context.Context, _ *protocol.CallToolRequest, i
 		input.Limit = 20
 	}
 	if input.Page < 1 || input.Page > 10000 {
-		return nil, searchOutput{}, errors.New("page must be between 1 and 10000")
+		return nil, searchOutput{}, fmt.Errorf("page must be between 1 and 10000")
 	}
 	if input.Limit < 1 || input.Limit > 100 {
-		return nil, searchOutput{}, errors.New("limit must be between 1 and 100")
+		return nil, searchOutput{}, fmt.Errorf("limit must be between 1 and 100")
 	}
 	result, err := s.music.Search(ctx, model.SearchRequest{Provider: input.Provider, Query: input.Query, Page: input.Page, Limit: input.Limit, Lossless: input.Lossless})
 	if err != nil {
@@ -167,9 +158,9 @@ func (s *Server) searchMusic(ctx context.Context, _ *protocol.CallToolRequest, i
 
 func (s *Server) searchLibrary(ctx context.Context, _ *protocol.CallToolRequest, input searchLibraryInput) (*protocol.CallToolResult, searchLibraryOutput, error) {
 	limit := int64(20)
-	if input.Limit > 0 {
-		if input.Limit > 100 {
-			return nil, searchLibraryOutput{}, errors.New("limit must be between 1 and 100")
+	if input.Limit != 0 {
+		if input.Limit < 1 || input.Limit > 100 {
+			return nil, searchLibraryOutput{}, fmt.Errorf("limit must be between 1 and 100")
 		}
 		limit = int64(input.Limit)
 	}
@@ -196,7 +187,7 @@ func (s *Server) downloadMusic(ctx context.Context, _ *protocol.CallToolRequest,
 			TrackID:  input.TrackID,
 			Quality:  input.Quality,
 		},
-		Metadata: model.MusicMetadata{
+		Metadata: model.Metadata{
 			Name:        input.Name,
 			Artists:     input.Artists,
 			Album:       input.Album,
@@ -257,7 +248,7 @@ func normalizeListLimit(limit int) (int, error) {
 		return 50, nil
 	}
 	if limit < 1 || limit > 500 {
-		return 0, errors.New("limit must be between 1 and 500")
+		return 0, fmt.Errorf("limit must be between 1 and 500")
 	}
 	return limit, nil
 }

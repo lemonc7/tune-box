@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/lemonc7/tune-go/internal/model"
@@ -18,70 +17,51 @@ type Handler struct {
 }
 
 func (h *Handler) Home(c *echo.Context) error {
-	req := searchRequest(c)
-	if req.Provider == "" && req.Query == "" {
-		return render(
-			c,
-			http.StatusOK,
-			pages.SearchPage(h.Music.Providers(), req, nil, ""),
-		)
-	}
-
-	if req.Provider == "" || req.Query == "" {
-		const message = "音乐源和关键词不能为空"
-		if isHTMXRequest(c) {
-			return render(c, http.StatusOK, components.ErrorNotice(message))
-		}
-		return render(
-			c,
-			http.StatusOK,
-			pages.SearchPage(h.Music.Providers(), req, nil, message),
-		)
-	}
-
-	result, err := h.Music.Search(c.Request().Context(), req)
-	if err != nil {
-		if isHTMXRequest(c) {
-			return renderError(c, err)
-		}
-		return render(
-			c,
-			http.StatusOK,
-			pages.SearchPage(h.Music.Providers(), req, nil, err.Error()),
-		)
-	}
-	if isHTMXRequest(c) {
-		if req.Page > 1 {
-			return render(c, http.StatusOK, pages.SearchResultsAppend(result, req.Lossless))
-		}
-		return render(c, http.StatusOK, pages.SearchResults(result, req.Lossless))
-	}
 	return render(
 		c,
 		http.StatusOK,
-		pages.SearchPage(h.Music.Providers(), req, &result, ""),
+		pages.SearchPage(
+			h.Music.Providers(),
+			model.SearchRequest{Lossless: true},
+			nil,
+			"",
+		),
 	)
 }
 
 func (h *Handler) Search(c *echo.Context) error {
-	req := searchRequest(c)
-
-	if req.Provider == "" || req.Query == "" {
-		return render(
-			c,
-			http.StatusOK,
-			components.ErrorNotice("音乐源和关键词不能为空"),
-		)
+	var req model.SearchRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(
+			http.StatusBadRequest,
+			"bad request",
+		).Wrap(err)
+	}
+	if err := c.Validate(&req); err != nil {
+		return err
 	}
 
 	result, err := h.Music.Search(c.Request().Context(), req)
 	if err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"search failed",
+		).Wrap(err)
 	}
 
-	if req.Page > 1 {
-		return render(c, http.StatusOK, pages.SearchResultsAppend(result, req.Lossless))
+	// 如果请求是由无限滚动触发的
+	if c.Request().Header.Get("HX-Trigger") == "search-more" {
+		// 仅返回卡片列表
+		return render(
+			c,
+			http.StatusOK,
+			pages.TrackList(
+				result,
+				req.Lossless,
+			))
 	}
+
+	// 表单提交/首次加载：返回完整的带头部的结果
 	return render(
 		c,
 		http.StatusOK,
@@ -89,43 +69,16 @@ func (h *Handler) Search(c *echo.Context) error {
 	)
 }
 
-func searchRequest(c *echo.Context) model.SearchRequest {
-	providerName := strings.TrimSpace(c.QueryParam("provider"))
-	query := strings.TrimSpace(c.QueryParam("q"))
-	lossless := c.QueryParam("lossless") == "true"
-	// 初次打开搜索页时默认启用无损过滤；提交搜索后以复选框参数为准。
-	if providerName == "" && query == "" {
-		lossless = true
-	}
-	return model.SearchRequest{
-		Provider: providerName,
-		Query:    query,
-		Page:     queryInt(c, "page", 1),
-		Limit:    queryInt(c, "limit", 20),
-		Lossless: lossless,
-	}
-}
-
-func isHTMXRequest(c *echo.Context) bool {
-	request := c.Request()
-	return request.Header.Get("HX-Request") == "true" &&
-		request.Header.Get("HX-History-Restore-Request") != "true"
-}
-
 func (h *Handler) Resolve(c *echo.Context) error {
-	req, err := bindDownloadForm(c.Request())
-	if err != nil {
-		return renderError(c, err)
+	var req model.DownloadRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(
+			http.StatusBadGateway,
+			"bad request",
+		).Wrap(err)
 	}
-
-	if req.Provider == "" ||
-		req.TrackID == "" ||
-		req.Quality == "" {
-		return render(
-			c,
-			http.StatusOK,
-			components.ErrorNotice("解析参数不完整"),
-		)
+	if err := c.Validate(&req); err != nil {
+		return err
 	}
 
 	resource, err := h.Music.Resolve(
@@ -133,7 +86,10 @@ func (h *Handler) Resolve(c *echo.Context) error {
 		req.ResolveRequest,
 	)
 	if err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"resolve failed",
+		).Wrap(err)
 	}
 
 	return render(
@@ -144,14 +100,23 @@ func (h *Handler) Resolve(c *echo.Context) error {
 }
 
 func (h *Handler) CreateDownload(c *echo.Context) error {
-	req, err := bindDownloadForm(c.Request())
-	if err != nil {
-		return renderError(c, err)
+	var req model.DownloadRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(
+			http.StatusBadRequest,
+			"bad request",
+		).Wrap(err)
+	}
+	if err := c.Validate(&req); err != nil {
+		return err
 	}
 
 	result, err := h.Music.Download(c.Request().Context(), req)
 	if err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"download failed",
+		).Wrap(err)
 	}
 
 	c.Response().Header().Set(
@@ -178,7 +143,10 @@ func (h *Handler) DownloadsPage(c *echo.Context) error {
 		0,
 	)
 	if err != nil {
-		return err
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"list downloads failed",
+		).Wrap(err)
 	}
 
 	return render(
@@ -194,28 +162,35 @@ func (h *Handler) DownloadList(c *echo.Context) error {
 		100,
 		0,
 	)
+
 	if err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"list downloads failed",
+		).Wrap(err)
 	}
 
 	return render(
 		c,
 		http.StatusOK,
-		pages.DownloadList(items, true),
+		pages.DownloadsList(items),
 	)
 }
 
 func (h *Handler) PauseDownload(c *echo.Context) error {
 	id, err := downloadID(c)
 	if err != nil {
-		return renderError(c, err)
+		return err
 	}
 
 	if _, err := h.Music.PauseDownload(
 		c.Request().Context(),
 		id,
 	); err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"pause download failed",
+		).Wrap(err)
 	}
 
 	return h.DownloadList(c)
@@ -224,14 +199,17 @@ func (h *Handler) PauseDownload(c *echo.Context) error {
 func (h *Handler) ResumeDownload(c *echo.Context) error {
 	id, err := downloadID(c)
 	if err != nil {
-		return renderError(c, err)
+		return err
 	}
 
 	if _, err := h.Music.ResumeDownload(
 		c.Request().Context(),
 		id,
 	); err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"resume download failed",
+		).Wrap(err)
 	}
 
 	return h.DownloadList(c)
@@ -240,14 +218,17 @@ func (h *Handler) ResumeDownload(c *echo.Context) error {
 func (h *Handler) CancelDownload(c *echo.Context) error {
 	id, err := downloadID(c)
 	if err != nil {
-		return renderError(c, err)
+		return err
 	}
 
 	if _, err := h.Music.CancelDownload(
 		c.Request().Context(),
 		id,
 	); err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"cancel download failed",
+		).Wrap(err)
 	}
 
 	return h.DownloadList(c)
@@ -256,14 +237,17 @@ func (h *Handler) CancelDownload(c *echo.Context) error {
 func (h *Handler) RetryDownload(c *echo.Context) error {
 	id, err := downloadID(c)
 	if err != nil {
-		return renderError(c, err)
+		return err
 	}
 
 	if _, err := h.Music.RetryDownload(
 		c.Request().Context(),
 		id,
 	); err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"retry download failed",
+		).Wrap(err)
 	}
 
 	return h.DownloadList(c)
@@ -271,48 +255,82 @@ func (h *Handler) RetryDownload(c *echo.Context) error {
 
 func (h *Handler) SyncLibrary(c *echo.Context) error {
 	if err := h.Music.SyncLibrary(c.Request().Context()); err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"sync library failed",
+		).Wrap(err)
 	}
-	c.Response().Header().Set("HX-Trigger", "libraryUpdated")
-	return render(c, http.StatusOK, components.Notice("曲库同步完成"))
+	return c.NoContent(http.StatusOK)
 }
 
 func (h *Handler) LibraryPage(c *echo.Context) error {
-	keyword := strings.TrimSpace(c.QueryParam("q"))
-	offset := queryInt(c, "offset", 0)
-	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, int64(offset), 20)
+	ctx := c.Request().Context()
+	items, err := h.Music.SearchSongs(ctx, "", 0, 20)
 	if err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"load songs failed",
+		).Wrap(err)
 	}
-	total, _ := h.Music.CountSongs(c.Request().Context())
-	return render(c, http.StatusOK, pages.LibraryPage(items, keyword, int(total)))
+
+	total, err := h.Music.CountSongs(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"get songs count failed",
+		).Wrap(err)
+	}
+
+	return render(
+		c,
+		http.StatusOK,
+		pages.LibraryPage(items, int(total)))
 }
 
-func (h *Handler) Library(c *echo.Context) error {
-	keyword := strings.TrimSpace(c.QueryParam("q"))
-	offset := queryInt(c, "offset", 0)
-	items, err := h.Music.SearchSongs(c.Request().Context(), keyword, int64(offset), 20)
+func (h *Handler) LibraryItems(c *echo.Context) error {
+	var req model.SearchSongsRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(
+			http.StatusBadRequest,
+			"bad request",
+		).Wrap(err)
+	}
+	if err := c.Validate(&req); err != nil {
+		return err
+	}
+
+	items, err := h.Music.SearchSongs(
+		c.Request().Context(),
+		req.Keyword,
+		int64(req.Offset),
+		int64(req.Limit),
+	)
 	if err != nil {
-		return renderError(c, err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			"search songs failed",
+		)
 	}
-	if offset > 0 {
-		return render(c, http.StatusOK, pages.LibraryResultsAppend(items, keyword, offset))
-	}
-	return render(c, http.StatusOK, pages.LibraryResults(items, keyword))
+
+	return render(
+		c,
+		http.StatusOK,
+		pages.LibraryRows(
+			items,
+			req.Keyword,
+			req.Offset,
+		),
+	)
 }
 
 func downloadID(c *echo.Context) (int64, error) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	q := c.Param("id")
+	id, err := strconv.ParseInt(q, 10, 64)
 	if err != nil || id < 1 {
-		return 0, fmt.Errorf("无效的下载任务 ID")
+		return 0, echo.NewHTTPError(
+			http.StatusBadRequest,
+			fmt.Sprintf("invalid download id: %s", q),
+		)
 	}
 	return id, nil
-}
-
-func queryInt(c *echo.Context, name string, fallback int) int {
-	value, err := strconv.Atoi(c.QueryParam(name))
-	if err != nil || value < 1 {
-		return fallback
-	}
-	return value
 }

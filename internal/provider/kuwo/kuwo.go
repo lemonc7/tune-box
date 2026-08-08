@@ -15,8 +15,6 @@ import (
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 
-const lyricURL = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"
-
 // qualities 将对外使用的音质 ID 映射成统一音质模型。
 var qualities = map[string]model.Quality{
 	"128kmp3":   {ID: "128kmp3", Label: "MP3 128K", Format: "mp3", Bitrate: 128},
@@ -31,14 +29,21 @@ type Provider struct {
 	client     *http.Client
 	searchURL  string
 	resolveURL string
+	lyricURL   string
 }
 
 // New 使用指定的酷我接口创建 Provider。
-func New(client *http.Client, searchURL, resolveURL string) *Provider {
+func New(
+	client *http.Client,
+	searchURL,
+	resolveURL string,
+	lyricURL string,
+) *Provider {
 	return &Provider{
 		client:     client,
 		searchURL:  searchURL,
 		resolveURL: resolveURL,
+		lyricURL:   lyricURL,
 	}
 }
 
@@ -179,7 +184,6 @@ func (p *Provider) Resolve(ctx context.Context, trackID, qualityID string) (mode
 		return model.Resource{}, fmt.Errorf("Kuwo returned no resource URL; the track may require permission or the endpoint changed")
 	}
 
-
 	return model.Resource{
 		Provider: p.Name(),
 		TrackID:  trackID,
@@ -201,7 +205,7 @@ type lyricPayload struct {
 
 // 获取酷我的时间轴歌词。
 func (p *Provider) Lyrics(ctx context.Context, trackID string) (string, error) {
-	lyricEndpoint, err := url.Parse(lyricURL)
+	lyricEndpoint, err := url.Parse(p.lyricURL)
 	if err != nil {
 		return "", err
 	}

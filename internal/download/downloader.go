@@ -201,6 +201,7 @@ func (d *Downloader) finalize(
 	// 硬链接操作具有排他性，不会覆盖用户目录中已经存在的同名文件。
 	if err := os.Link(tempName, target); err != nil {
 		if errors.Is(err, os.ErrExist) {
+			os.Remove(tempName)
 			return model.DownloadResult{}, fmt.Errorf("target file already exists: %s", name)
 		}
 		return model.DownloadResult{}, err
