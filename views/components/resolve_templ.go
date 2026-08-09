@@ -39,9 +39,9 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue("#resolve-" + track.Provider + "-" + track.ID)
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue("#notify-" + track.Provider + "-" + track.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 12, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 13, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -54,7 +54,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(track.Provider)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 17, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 18, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
@@ -67,7 +67,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(track.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 18, Col: 54}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 19, Col: 54}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -80,7 +80,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(quality.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 19, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 20, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -93,7 +93,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(track.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 20, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 21, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
@@ -106,7 +106,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(track.Album)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 21, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 22, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 		if templ_7745c5c3_Err != nil {
@@ -119,7 +119,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(track.AlbumArtist)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 22, Col: 67}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 23, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -132,7 +132,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(track.Date)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 23, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 24, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {
@@ -145,7 +145,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%d", track.DurationMS))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 24, Col: 84}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 25, Col: 84}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 		if templ_7745c5c3_Err != nil {
@@ -158,7 +158,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(track.CoverURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 25, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 26, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 		if templ_7745c5c3_Err != nil {
@@ -176,7 +176,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(artist)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 27, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 28, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 			if templ_7745c5c3_Err != nil {
@@ -194,7 +194,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue("下载 " + quality.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 31, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 32, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 		if templ_7745c5c3_Err != nil {
@@ -207,7 +207,7 @@ func ResolveButton(track model.Track, quality model.Quality) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(" · " + quality.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 34, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 35, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -249,7 +249,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(resource.Quality.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 48, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 49, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -267,7 +267,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(" / " + resource.Quality.Format)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 50, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 51, Col: 43}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -290,7 +290,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(resource.ExpiresAt)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 54, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 55, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -308,7 +308,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(request.Provider)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 62, Col: 64}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 63, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 		if templ_7745c5c3_Err != nil {
@@ -321,7 +321,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(request.TrackID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 63, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 64, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 		if templ_7745c5c3_Err != nil {
@@ -334,7 +334,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(request.Quality)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 64, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 65, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 		if templ_7745c5c3_Err != nil {
@@ -347,7 +347,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(request.Metadata.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 65, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 66, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 		if templ_7745c5c3_Err != nil {
@@ -360,7 +360,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 		var templ_7745c5c3_Var23 string
 		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(request.Metadata.Album)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 66, Col: 67}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 67, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 		if templ_7745c5c3_Err != nil {
@@ -373,7 +373,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(request.Metadata.AlbumArtist)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 67, Col: 79}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 68, Col: 79}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 		if templ_7745c5c3_Err != nil {
@@ -386,7 +386,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 		var templ_7745c5c3_Var25 string
 		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(request.Metadata.Date)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 68, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 69, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
@@ -399,7 +399,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(request.Metadata.CoverURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 69, Col: 73}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 70, Col: 73}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 		if templ_7745c5c3_Err != nil {
@@ -417,7 +417,7 @@ func ResolveResource(request model.DownloadRequest, resource model.Resource) tem
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(artist)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 71, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/components/resolve.templ`, Line: 72, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
 			if templ_7745c5c3_Err != nil {

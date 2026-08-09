@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v5"
-	"github.com/lemonc7/tune-go/app"
 	"github.com/lemonc7/tune-go/config"
+	"github.com/lemonc7/tune-go/internal/web"
 )
 
 func main() {
@@ -23,7 +23,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	server, err := app.New(cfg, logger)
+	server, err := web.New(cfg, logger)
 	if err != nil {
 		logger.Error(err.Error())
 		os.Exit(1)

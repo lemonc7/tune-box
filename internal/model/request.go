@@ -18,9 +18,9 @@ type SearchRequest struct {
 
 // ResolveRequest 指定需要解析的音乐源、歌曲和音质。
 type ResolveRequest struct {
-	Provider string `form:"provider" validate:"required"`
-	TrackID  string `form:"trackId" validate:"required"`
-	Quality  string `form:"quality" validate:"required"`
+	Provider string `form:"provider" query:"provider" validate:"required"`
+	TrackID  string `form:"trackId" query:"trackId" validate:"required"`
+	Quality  string `form:"quality" query:"quality" validate:"required"`
 }
 
 // DownloadRequest 在解析请求基础上增加可选文件名。
@@ -33,6 +33,11 @@ type SearchSongsRequest struct {
 	Keyword string `query:"q"`
 	Offset  int    `query:"offset" validate:"gte=0"`
 	Limit   int    `query:"limit" validate:"required,gte=1,lte=100"`
+}
+
+type StreamRequest struct {
+	Provider string `query:"provider" validate:"required"`
+	TrackID  string `query:"trackId" validate:"required"`
 }
 
 type Validator struct {

@@ -90,7 +90,7 @@ func LibraryContent(items []repo.SearchSongsRow, count int) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<button hx-post=\"/library/sync\" hx-swap=\"none\" hx-indicator=\"find .htmx-indicator\" class=\"cursor-pointer rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-200 transition-colors\"><span>同步曲库</span> <span class=\"htmx-indicator ml-1 inline-flex items-center\"><svg class=\"animate-spin h-3 w-3\" viewBox=\"0 0 24 24\" fill=\"none\"><circle class=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" stroke-width=\"4\"></circle> <path class=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z\"></path></svg></span></button></div></header><form class=\"mb-5 flex gap-3\" hx-get=\"/library/items\" hx-target=\"#library-results\" hx-swap=\"innerHTML\" hx-trigger=\"input changed delay:300ms from:find input, search\"><input type=\"search\" name=\"q\" placeholder=\"搜索歌名或艺人...\" autocomplete=\"off\" class=\"w-full max-w-sm rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm shadow-xs focus:border-indigo-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-600/20\"> <input type=\"hidden\" name=\"limit\" value=\"20\"></form><table class=\"w-full text-sm\"><thead><tr class=\"border-b border-slate-200 text-left text-xs font-semibold uppercase text-slate-400\"><th class=\"w-20 px-3 py-2.5\">格式</th><th class=\"px-3 py-2.5\">歌曲</th><th class=\"hidden px-3 py-2.5 sm:table-cell\">艺人</th><th class=\"hidden whitespace-nowrap px-3 py-2.5 text-right md:table-cell\">大小</th></tr></thead> <tbody id=\"library-results\" class=\"divide-y divide-slate-100\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<button hx-post=\"/library/sync\" hx-target=\"this\" hx-swap=\"outerHTML\" class=\"relative cursor-pointer rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-200 transition-colors\"><span>同步曲库</span> <span class=\"htmx-indicator absolute inset-0 flex items-center justify-center rounded-lg bg-indigo-100\"><svg class=\"animate-spin h-3.5 w-3.5 text-indigo-600\" viewBox=\"0 0 24 24\" fill=\"none\"><circle class=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" stroke-width=\"4\"></circle> <path class=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z\"></path></svg></span></button></div></header><form class=\"mb-5 flex gap-3\" hx-get=\"/library/items\" hx-target=\"#library-results\" hx-swap=\"innerHTML\" hx-trigger=\"input changed delay:300ms from:find input, librarySyncDone from:body\"><input type=\"search\" name=\"q\" placeholder=\"搜索歌名或艺人...\" autocomplete=\"off\" class=\"w-full max-w-sm rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm shadow-xs focus:border-indigo-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-600/20\"> <input type=\"hidden\" name=\"limit\" value=\"20\"></form><table class=\"w-full text-sm\"><thead><tr class=\"border-b border-slate-200 text-left text-xs font-semibold uppercase text-slate-400\"><th class=\"w-20 px-3 py-2.5\">格式</th><th class=\"px-3 py-2.5\">歌曲</th><th class=\"hidden px-3 py-2.5 sm:table-cell\">艺人</th><th class=\"hidden whitespace-nowrap px-3 py-2.5 text-right md:table-cell\">大小</th></tr></thead> <tbody id=\"library-results\" class=\"divide-y divide-slate-100\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -341,6 +341,35 @@ func libraryPageURL(keyword string, offset int) string {
 		values.Set("q", keyword)
 	}
 	return "/library/items?" + values.Encode()
+}
+
+func SyncDone() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var14 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var14 == nil {
+			templ_7745c5c3_Var14 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<span class=\"inline-flex items-center gap-1 rounded-lg bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700\"><svg class=\"h-3.5 w-3.5\" viewBox=\"0 0 20 20\" fill=\"currentColor\"><path fill-rule=\"evenodd\" d=\"M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z\" clip-rule=\"evenodd\"></path></svg> 同步完成</span>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
 }
 
 func extClass(ext string) string {

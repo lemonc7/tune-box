@@ -5,11 +5,12 @@ import (
 	"github.com/lemonc7/tune-go/internal/model"
 )
 
+
 templ ResolveButton(track model.Track, quality model.Quality) {
 	<form
 		class="inline-flex items-center gap-1"
 		hx-post="/downloads"
-		hx-target={ "#resolve-" + track.Provider + "-" + track.ID }
+		hx-target={ "#notify-" + track.Provider + "-" + track.ID }
 		hx-swap="innerHTML"
 		hx-indicator="find .htmx-indicator"
 		hx-disabled-elt="find button"
