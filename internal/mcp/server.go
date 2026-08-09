@@ -48,13 +48,13 @@ type downloadInput struct {
 	TrackID     string   `json:"trackId" jsonschema:"搜索结果中的歌曲 ID"`
 	Quality     string   `json:"quality" jsonschema:"搜索结果中的音质 ID，例如 2000kflac 或 lossless"`
 	FileName    string   `json:"fileName,omitempty" jsonschema:"可选的保存文件名，不需要包含扩展名"`
-	Name        string   `json:"name,omitempty" jsonschema:"搜索结果中的歌曲名，用于保存曲库信息"`
-	Artists     []string `json:"artists,omitempty" jsonschema:"搜索结果中的歌手列表，用于保存曲库信息"`
-	Album       string   `json:"album,omitempty" jsonschema:"搜索结果中的专辑名"`
-	AlbumArtist string   `json:"albumArtist,omitempty" jsonschema:"专辑艺术家"`
-	Date        string   `json:"date,omitempty" jsonschema:"发行日期"`
-	CoverURL    string   `json:"coverUrl,omitempty" jsonschema:"搜索结果中的封面地址"`
-	DurationMS  int64    `json:"durationMs,omitempty" jsonschema:"搜索结果中的歌曲时长，单位毫秒"`
+	Name        string   `json:"name" jsonschema:"歌曲名，用于写入音频标签"`
+	Artists     []string `json:"artists" jsonschema:"歌手列表，用于写入音频标签"`
+	Album       string   `json:"album" jsonschema:"专辑名，用于写入音频标签"`
+	AlbumArtist string   `json:"albumArtist" jsonschema:"专辑艺术家，用于写入音频标签"`
+	Date        string   `json:"date" jsonschema:"发行日期，用于写入音频标签"`
+	CoverURL    string   `json:"coverUrl" jsonschema:"封面地址，用于下载封面并写入音频标签"`
+	DurationMS  int64    `json:"durationMs" jsonschema:"歌曲时长（毫秒）"`
 }
 type downloadOutput struct {
 	Result model.DownloadTaskResult `json:"result"`
@@ -90,7 +90,7 @@ type syncLibraryOutput struct{}
 func New(music *service.Music, logger *slog.Logger, token string) http.Handler {
 	server := &Server{
 		music: music, logger: logger,
-		mcp: protocol.NewServer(&protocol.Implementation{Name: "tune-go", Version: "0.2.0"}, nil),
+		mcp: protocol.NewServer(&protocol.Implementation{Name: "tune-go", Version: "0.1.2"}, nil),
 	}
 	server.registerTools()
 	handler := protocol.NewStreamableHTTPHandler(
@@ -122,7 +122,7 @@ func (s *Server) registerTools() {
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "search_music", Description: "从指定音乐源搜索歌曲；返回歌曲 ID 和可选音质。"}, s.searchMusic)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "search_library", Description: "查询本地曲库中已存在的歌曲；下载前应调用此工具检查，避免重复下载。"}, s.searchLibrary)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "resolve_music", Description: "解析临时资源信息，仅用于检查资源，不写入文件。"}, s.resolveMusic)
-	protocol.AddTool(s.mcp, &protocol.Tool{Name: "download_music", Description: "创建异步下载任务，立即返回任务 ID。"}, s.downloadMusic)
+	protocol.AddTool(s.mcp, &protocol.Tool{Name: "download_music", Description: "创建异步下载任务；请从 search_music 结果中提取完整的歌曲元数据（name/artists/album/albumArtist/date/coverUrl/durationMs）一并传入，以确保 FLAC 文件包含完整的标签和封面。"}, s.downloadMusic)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "list_downloads", Description: "查询下载任务的状态、进度、字节数和重试次数。"}, s.listDownloads)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "pause_download", Description: "暂停下载任务并保留断点。"}, s.pauseDownload)
 	protocol.AddTool(s.mcp, &protocol.Tool{Name: "resume_download", Description: "继续已暂停的下载任务。"}, s.resumeDownload)
