@@ -1,5 +1,1 @@
-.env
-config.yml
-
-downloads/
-data/
+/target
