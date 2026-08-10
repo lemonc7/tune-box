@@ -58,10 +58,10 @@ pub struct Metadata {
     pub cover_url: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct DownloadResult {
-    pub path: String,
-    pub name: String,
-    pub size: i64,
-    pub content_type: String,
+#[derive(Debug, Clone)]
+pub struct DownloadRequest {
+    pub provider: String,
+    pub track_id: String,
+    pub quality: String,
+    pub metadata: Metadata,
 }

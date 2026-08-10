@@ -83,7 +83,7 @@ impl Downloader {
         let status = resp.status();
 
         if status != reqwest::StatusCode::OK && status != reqwest::StatusCode::PARTIAL_CONTENT {
-            return Err(DownloadError::HTTP(status));
+            return Err(DownloadError::Http(status));
         }
 
         // 如果服务器不支持端点续传(206)，从头开始下载

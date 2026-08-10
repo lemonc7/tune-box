@@ -3,6 +3,5 @@ pub mod error;
 pub mod model;
 pub mod server;
 
-fn main() {
-    println!("Hello, world!");
-}
+#[tokio::main]
+async fn main() {}
