@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const DOWNLOAD_DIR: &str = "downloads";
 
@@ -48,7 +48,7 @@ pub struct Resource {
     pub headers: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub name: String,
     pub artists: Vec<String>,

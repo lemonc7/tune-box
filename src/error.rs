@@ -20,10 +20,20 @@ pub enum DownloadError {
     Io(#[from] std::io::Error),
     #[error("资源链接无效")]
     InvalidUrl,
+    #[error("文件名无效")]
+    InvalidFileName,
+    #[error("目标文件已存在")]
+    TargetExists,
+    #[error("断点续传响应范围无效")]
+    InvalidRange,
     #[error("资源文件过大")]
     TooLarge,
     #[error("下载资源为空")]
     Empty,
+    #[error("资源服务器返回了非音频内容: {0}")]
+    UnexpectedContentType(String),
+    #[error("下载文件大小不匹配，期望 {expected} 字节，实际 {actual} 字节")]
+    SizeMismatch { expected: u64, actual: u64 },
     #[error("http状态错误: {0}")]
     Http(reqwest::StatusCode),
 }

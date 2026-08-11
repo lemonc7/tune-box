@@ -156,6 +156,16 @@ impl Provider for KuwoProvider {
         page: u32,
         limit: u32,
     ) -> Result<SearchResult, ProviderError> {
+        if page == 0 {
+            return Err(ProviderError::InvalidArgument(
+                "page必须大于等于1".to_string(),
+            ));
+        }
+        if limit == 0 {
+            return Err(ProviderError::InvalidArgument(
+                "limit必须大于等于1".to_string(),
+            ));
+        }
         let mut url = Url::parse(&self.search_url)
             .map_err(|e| ProviderError::InvalidArgument(format!("解析搜索url: {e}")))?;
 
@@ -168,7 +178,7 @@ impl Provider for KuwoProvider {
                 .append_pair("mobi", "1")
                 .append_pair("vipver", "1")
                 .append_pair("pn", &(page - 1).to_string())
-                .append_pair("rn", &(limit - 1).to_string())
+                .append_pair("rn", &limit.to_string())
                 .append_pair("correct", "1")
                 .append_pair("all", query)
                 .append_pair("ft", "music");
@@ -321,14 +331,14 @@ static QUALITIES: &[Quality] = &[
         lossless: false,
     },
     Quality {
-        id: "1000kmp3",
+        id: "1000kape",
         label: "APE",
         format: "ape",
         bitrate: 1000,
         lossless: true,
     },
     Quality {
-        id: "2000kmp3",
+        id: "2000kflac",
         label: "FLAC",
         format: "flac",
         bitrate: 2000,

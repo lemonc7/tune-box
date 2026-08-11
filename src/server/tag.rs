@@ -1,11 +1,12 @@
-use std::path::Path;
+use std::{io::Cursor, path::Path};
 
+use futures_util::StreamExt;
 use lofty::{
     config::WriteOptions,
     file::{AudioFile, TaggedFileExt},
-    picture::{Picture, PictureType},
+    picture::{MimeType, Picture, PictureType},
     probe::Probe,
-    tag::{ItemKey, Tag},
+    tag::{ItemKey, ItemValue, Tag, TagItem},
 };
 use reqwest::Url;
 
@@ -49,17 +50,21 @@ impl Embedder {
 
         // 写入常见元数据字段
         Self::set_tag_field(tag, ItemKey::TrackTitle, &metadata.name);
-        Self::set_tag_field(tag, ItemKey::TrackArtist, &metadata.artists.join("; "));
+        Self::set_artists(tag, &metadata.artists);
         Self::set_tag_field(tag, ItemKey::AlbumTitle, &metadata.album);
         Self::set_tag_field(tag, ItemKey::Lyrics, lyrics);
         Self::set_tag_field(tag, ItemKey::AlbumArtist, &metadata.album_artist);
         Self::set_tag_field(tag, ItemKey::RecordingDate, &metadata.date);
 
-        // 写入封面
+        // metadata是完整快照：先清理旧的正面封面；其他类型图片保持不变。
+        tag.remove_picture_type(PictureType::CoverFront);
         if let Some(data) = cover_info {
-            // 移除旧封面
-            tag.remove_picture_type(PictureType::CoverFront);
-            let mut picture = Picture::unchecked(data).build();
+            // 根据图片签名识别实际格式，避免仅信任 HTTP Content-Type。
+            let mut picture = Picture::from_reader(&mut Cursor::new(data))
+                .map_err(|_| TagError::UnsupportedCoverFormat)?;
+            if !matches!(picture.mime_type(), Some(MimeType::Jpeg | MimeType::Png)) {
+                return Err(TagError::UnsupportedCoverFormat);
+            }
             picture.set_pic_type(PictureType::CoverFront);
             tag.push_picture(picture);
         }
@@ -70,8 +75,26 @@ impl Embedder {
 
     fn set_tag_field(tag: &mut Tag, key: ItemKey, value: &str) {
         let value = value.trim();
-        if !value.is_empty() {
+        if value.is_empty() {
+            tag.remove_key(key);
+        } else {
             tag.insert_text(key, value.to_string());
+        }
+    }
+
+    fn set_artists(tag: &mut Tag, artists: &[String]) {
+        tag.remove_key(ItemKey::TrackArtist);
+
+        for artist in artists {
+            let artist = artist.trim();
+            if artist.is_empty() {
+                continue;
+            }
+
+            tag.push(TagItem::new(
+                ItemKey::TrackArtist,
+                ItemValue::Text(artist.to_string()),
+            ));
         }
     }
 
@@ -93,12 +116,27 @@ impl Embedder {
             return Err(TagError::HttpStatus(status));
         }
 
-        let bytes = resp.bytes().await?;
-        if bytes.is_empty() || bytes.len() > MAX_COVER_BYTES {
+        if resp
+            .content_length()
+            .is_some_and(|length| length > MAX_COVER_BYTES as u64)
+        {
             return Err(TagError::CoverSizeInvalid);
         }
 
-        Ok(Some(bytes.to_vec()))
+        let mut data = Vec::new();
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            if data.len() + chunk.len() > MAX_COVER_BYTES {
+                return Err(TagError::CoverSizeInvalid);
+            }
+            data.extend_from_slice(&chunk);
+        }
+        if data.is_empty() {
+            return Err(TagError::CoverSizeInvalid);
+        }
+
+        Ok(Some(data))
     }
 
     pub fn read_flac_metadata(path: impl AsRef<Path>) -> Result<FlacInfo, TagError> {
@@ -108,15 +146,72 @@ impl Embedder {
             if let Some(title) = tag.get_string(ItemKey::TrackTitle) {
                 info.title = title.trim().to_string();
             }
-            if let Some(artist) = tag.get_string(ItemKey::TrackArtist) {
-                info.artists = artist
-                    .split(';')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect()
-            }
+            info.artists = artists_from_tag(tag);
         };
 
         Ok(info)
+    }
+}
+
+fn artists_from_tag(tag: &Tag) -> Vec<String> {
+    tag.get_strings(ItemKey::TrackArtist)
+        // 兼容旧版本写入的单个 "artist1; artist2" 字段。
+        .flat_map(|artist| artist.split(';'))
+        .map(str::trim)
+        .filter(|artist| !artist.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lofty::tag::TagType;
+
+    #[test]
+    fn set_tag_field_replaces_and_removes_values() {
+        let mut tag = Tag::new(TagType::VorbisComments);
+        tag.insert_text(ItemKey::TrackTitle, "old title".to_string());
+
+        Embedder::set_tag_field(&mut tag, ItemKey::TrackTitle, " new title ");
+        assert_eq!(tag.get_string(ItemKey::TrackTitle), Some("new title"));
+
+        Embedder::set_tag_field(&mut tag, ItemKey::TrackTitle, "  ");
+        assert_eq!(tag.get_string(ItemKey::TrackTitle), None);
+    }
+
+    #[test]
+    fn writes_artists_as_multiple_fields() {
+        let mut tag = Tag::new(TagType::VorbisComments);
+        let artists = vec![
+            " artist one ".to_string(),
+            "".to_string(),
+            "artist two".to_string(),
+        ];
+
+        Embedder::set_artists(&mut tag, &artists);
+
+        assert_eq!(
+            tag.get_strings(ItemKey::TrackArtist).collect::<Vec<_>>(),
+            ["artist one", "artist two"]
+        );
+    }
+
+    #[test]
+    fn reads_multiple_and_legacy_artist_fields() {
+        let mut tag = Tag::new(TagType::VorbisComments);
+        tag.push(TagItem::new(
+            ItemKey::TrackArtist,
+            ItemValue::Text("artist one; artist two".to_string()),
+        ));
+        tag.push(TagItem::new(
+            ItemKey::TrackArtist,
+            ItemValue::Text("artist three".to_string()),
+        ));
+
+        assert_eq!(
+            artists_from_tag(&tag),
+            ["artist one", "artist two", "artist three"]
+        );
     }
 }
