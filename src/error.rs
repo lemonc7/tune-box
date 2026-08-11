@@ -18,6 +18,8 @@ pub enum ProviderError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DownloadError {
+    #[error("下载已中断")]
+    Cancelled,
     #[error("请求错误: {0}")]
     Request(#[from] reqwest::Error),
     #[error("IO错误: {0}")]
@@ -92,6 +94,24 @@ pub enum ServiceError {
     ProgressTask(#[from] tokio::task::JoinError),
     #[error("文件大小超过数据库 INTEGER 范围")]
     SizeOverflow,
-    #[error("任务尝试次数超过数据库 INTEGER 范围")]
-    AttemptOverflow,
+    #[error("任务版本号超过数据库 INTEGER 范围")]
+    VersionOverflow,
+    #[error("数据库操作失败: {0}")]
+    Database(#[from] sqlx::Error),
+    #[error("任务不存在: {0}")]
+    TaskNotFound(i64),
+    #[error("任务状态已发生变化")]
+    StateChanged,
+    #[error("任务执行已中断")]
+    Interrupted,
+    #[error("下载文件路径丢失")]
+    MissingDownloadPath,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ManagerError {
+    #[error("任务管理器已经停止")]
+    ManagerStopped,
+    #[error("数据库操作失败: {0}")]
+    Database(#[from] sqlx::Error),
 }

@@ -1,11 +1,31 @@
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
-use sqlx::SqlitePool;
+use ::time::{Duration as TimeDuration, OffsetDateTime};
+use tokio::{fs, sync::mpsc, time};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
-    error::ServiceError,
-    server::{db::repository::Repository, download::Downloader, provider::Provider, tag::Embedder},
+    error::{DownloadError, ProviderError, ServiceError, TagError},
+    model::Resource,
+    server::{
+        db::{
+            model::{Download, Status},
+            repository::Repository,
+        },
+        download::{DownloadOptions, DownloadProgress, DownloadResult, Downloader},
+        provider::Provider,
+        tag::Embedder,
+    },
 };
+
+const MAX_RETRIES: i64 = 5;
+const BASE_RETRY_DELAY_SECS: u64 = 2;
+const MAX_RETRY_DELAY_SECS: u64 = 5 * 60;
 
 pub struct Service {
     repository: Repository,
@@ -36,229 +56,498 @@ impl Service {
             .ok_or(ServiceError::InvalidProvider)
     }
 
-    // /// 不经过 Manager 时使用的便捷入口；未领取到任务时直接返回 false。
-    // pub async fn process_download(&self, id: i64) -> Result<bool, ServiceError> {
-    //     if !self.claim_download(id).await? {
-    //         return Ok(false);
-    //     }
-    //     self.process_claimed_download(id).await?;
-    //     Ok(true)
-    // }
+    // task必须由claim_next原子领取
+    pub async fn execute_claimed(
+        &self,
+        task: Download,
+        cancellation: CancellationToken,
+    ) -> Result<(), ServiceError> {
+        match task.status {
+            Status::Resolving => self.execute_download(task, cancellation).await,
+            Status::Tagging => self.execute_tagging(task, cancellation).await,
+            actual => Err(ServiceError::InvalidState {
+                expected: Status::Resolving,
+                actual,
+            }),
+        }
+    }
 
-    // /// 执行已经由 Manager 原子领取、当前处于 Resolving 的任务。
-    // pub async fn process_claimed_download(&self, id: i64) -> Result<(), ServiceError> {
-    //     let result = self.process_resolving_download(id).await;
-    //     if let Err(err) = &result
-    //         && !matches!(
-    //             err,
-    //             ServiceError::InvalidState { .. } | ServiceError::InvalidTransition { .. }
-    //         )
-    //         && let Err(db_err) = self.mark_failed(id, &err.to_string()).await
-    //     {
-    //         tracing::error!(task_id = id, error = %db_err, "记录下载任务失败状态时出错");
-    //     }
-    //     result
-    // }
+    async fn execute_download(
+        &self,
+        task: Download,
+        cancellation: CancellationToken,
+    ) -> Result<(), ServiceError> {
+        let provider = match self.provider(&task.provider) {
+            Ok(provider) => provider,
+            Err(error) => {
+                self.handle_download_failure(&task, Status::Resolving, &error)
+                    .await?;
+                return Err(error);
+            }
+        };
 
-    // async fn process_resolving_download(&self, id: i64) -> Result<(), ServiceError> {
-    //     let mut db = self.db.clone();
-    //     let task = Download::get_by_id(&mut db, &id).await?;
-    //     if task.status != Status::Resolving {
-    //         return Err(ServiceError::InvalidState {
-    //             expected: Status::Resolving,
-    //             actual: task.status,
-    //         });
-    //     }
+        // 解析资源
+        let resolved = tokio::select! {
+            _ = cancellation.cancelled() => Err(ServiceError::Interrupted),
+            result = provider.resolve(&task.track_id, &task.quality) => {
+                result.map_err(ServiceError::from)
+            }
+        };
+        let resource = match resolved {
+            Ok(r) => r,
+            Err(err) => {
+                self.handle_download_failure(&task, Status::Resolving, &err)
+                    .await?;
+                if is_interrupted(&err) {
+                    return Ok(());
+                }
+                return Err(err);
+            }
+        };
 
-    //     let provider = self.provider(&task.provider)?;
-    //     let resource = provider.resolve(&task.track_id, &task.quality).await?;
-    //     self.start_downloading(id, &resource.url).await?;
+        // resolving -> downloading
+        let transitioned = self
+            .repository
+            .mark_downloading(task.id, task.version)
+            .await?;
+        if !transitioned {
+            // 用户可能已经暂停或取消任务
+            return Ok(());
+        }
 
-    //     let (progress_tx, progress_rx) = tokio::sync::mpsc::unbounded_channel();
-    //     let progress_db = self.db.clone();
-    //     let progress_task =
-    //         tokio::spawn(async move { persist_progress(progress_db, id, progress_rx).await });
+        // 下载文件
+        let result = match self
+            .download_resource(task.id, task.version, resource, cancellation)
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                self.handle_download_failure(&task, Status::Downloading, &error)
+                    .await?;
+                if is_interrupted(&error) {
+                    return Ok(());
+                }
+                return Err(error);
+            }
+        };
 
-    //     let result = self
-    //         .downloader
-    //         .download(
-    //             resource,
-    //             DownloadOptions {
-    //                 task_id: id,
-    //                 // 空名称会使用 provider-track_id，避免曲名中的路径字符影响下载。
-    //                 file_name: String::new(),
-    //                 progress: Some(move |progress| {
-    //                     let _ = progress_tx.send(progress);
-    //                 }),
-    //             },
-    //         )
-    //         .await;
+        // downloading -> downloaded
+        let size = i64::try_from(result.size).map_err(|_| ServiceError::SizeOverflow)?;
+        let path = result
+            .path
+            .to_str()
+            .map(|s| s.to_owned())
+            .ok_or(ServiceError::MissingDownloadPath)?;
+        let transitioned = self
+            .repository
+            .mark_downloaded(task.id, task.version, &path, size)
+            .await?;
+        if !transitioned {
+            // 文件已经下载完成，但任务被取消
+            tracing::warn!(task_id = task.id, path, "任务状态已变化，未提交下载结果")
+        }
+        Ok(())
+    }
 
-    //     // Downloader 返回时回调和 sender 已被释放，确保最终进度已经落库。
-    //     progress_task.await??;
-    //     let result = result?;
-    //     let size = i64::try_from(result.size).map_err(|_| ServiceError::SizeOverflow)?;
-    //     let path = path_to_string(&result.path)?;
-    //     self.finish_downloading(id, size, &path).await?;
+    async fn execute_tagging(
+        &self,
+        task: Download,
+        cancellation: CancellationToken,
+    ) -> Result<(), ServiceError> {
+        let path = match task.path.as_deref() {
+            Some(path) => path,
+            None => {
+                let error = ServiceError::MissingDownloadPath;
+                self.handle_tagging_failure(&task, &error).await?;
+                return Err(error);
+            }
+        };
 
-    //     self.transition(id, Status::Downloaded, Status::Tagging)
-    //         .await?;
-    //     let lyrics = provider.lyrics(&task.track_id).await?;
-    //     self.embedder
-    //         .embed_flac(&result.path, &task.metadata, &lyrics)
-    //         .await?;
-    //     self.complete(id, &path).await?;
+        let provider = match self.provider(&task.provider) {
+            Ok(provider) => provider,
+            Err(error) => {
+                self.handle_tagging_failure(&task, &error).await?;
+                return Err(error);
+            }
+        };
+        let result = tokio::select! {
+            _ = cancellation.cancelled() => Err(ServiceError::Interrupted),
+            result = async {
+                let lyrics = provider.lyrics(&task.track_id).await?;
+                self.embedder
+                    .embed_flac(path, task.metadata.0.clone(), lyrics)
+                    .await?;
+                self.publish_and_complete(&task, path).await?;
+                Ok::<(), ServiceError>(())
+            } => result,
+        };
 
-    //     Ok(())
-    // }
+        if let Err(error) = result {
+            self.handle_tagging_failure(&task, &error).await?;
+            if is_interrupted(&error) {
+                return Ok(());
+            }
+            return Err(error);
+        }
 
-    // async fn transition(&self, id: i64, from: Status, to: Status) -> Result<(), ServiceError> {
-    //     if !from.can_transition_to(to) {
-    //         return Err(ServiceError::InvalidTransition { from, to });
-    //     }
+        Ok(())
+    }
 
-    //     Download::filter_by_id(id)
-    //         .filter(Download::fields().status().eq(from))
-    //         .update()
-    //         .status(to)
-    //         .exec(&mut self.db.clone())
-    //         .await?;
-    //     self.ensure_status(id, from, to).await
-    // }
+    async fn publish_and_complete(
+        &self,
+        task: &Download,
+        ready_path: &str,
+    ) -> Result<(), ServiceError> {
+        let ready_path = Path::new(ready_path);
+        let published = publish_ready_file(task, ready_path).await?;
+        let file_metadata = fs::metadata(&published.path)
+            .await
+            .map_err(DownloadError::Io)?;
+        let size = i64::try_from(file_metadata.len()).map_err(|_| ServiceError::SizeOverflow)?;
+        let extension = published
+            .path
+            .extension()
+            .and_then(|value| value.to_str())
+            .ok_or(ServiceError::Download(DownloadError::InvalidFileName))?;
+        let final_path = published
+            .path
+            .to_str()
+            .ok_or(ServiceError::Download(DownloadError::InvalidFileName))?;
 
-    // async fn start_downloading(&self, id: i64, resource_url: &str) -> Result<(), ServiceError> {
-    //     Download::filter_by_id(id)
-    //         .filter(Download::fields().status().eq(Status::Resolving))
-    //         .update()
-    //         .status(Status::Downloading)
-    //         .resource_url(resource_url)
-    //         .error_message(None::<String>)
-    //         .exec(&mut self.db.clone())
-    //         .await?;
-    //     self.ensure_status(id, Status::Resolving, Status::Downloading)
-    //         .await
-    // }
+        let completed = self
+            .repository
+            .complete_with_song(
+                task.id,
+                task.version,
+                final_path,
+                extension,
+                size,
+                &task.metadata.0,
+            )
+            .await?;
 
-    // async fn finish_downloading(&self, id: i64, size: i64, path: &str) -> Result<(), ServiceError> {
-    //     Download::filter_by_id(id)
-    //         .filter(Download::fields().status().eq(Status::Downloading))
-    //         .update()
-    //         .status(Status::Downloaded)
-    //         .downloaded_bytes(size)
-    //         .total_bytes(size)
-    //         .path(path)
-    //         .exec(&mut self.db.clone())
-    //         .await?;
-    //     self.ensure_status(id, Status::Downloading, Status::Downloaded)
-    //         .await
-    // }
+        if !completed {
+            if published.created
+                && let Err(error) = fs::remove_file(&published.path).await
+            {
+                tracing::warn!(path = ?published.path, %error, "清理未提交的最终文件失败");
+            }
+            return Ok(());
+        }
 
-    // async fn complete(&self, id: i64, path: &str) -> Result<(), ServiceError> {
-    //     Download::filter_by_id(id)
-    //         .filter(Download::fields().status().eq(Status::Tagging))
-    //         .update()
-    //         .status(Status::Completed)
-    //         .path(path)
-    //         .error_message(None::<String>)
-    //         .finished_at(Timestamp::now())
-    //         .exec(&mut self.db.clone())
-    //         .await?;
-    //     self.ensure_status(id, Status::Tagging, Status::Completed)
-    //         .await
-    // }
+        if let Err(error) = fs::remove_file(ready_path).await {
+            tracing::warn!(path = ?ready_path, %error, "清理 ready 文件失败");
+        }
 
-    // pub(crate) async fn mark_failed(&self, id: i64, message: &str) -> Result<(), ServiceError> {
-    //     let mut db = self.db.clone();
-    //     let task = Download::get_by_id(&mut db, &id).await?;
-    //     if !task.status.can_transition_to(Status::Failed) {
-    //         return Ok(());
-    //     }
+        Ok(())
+    }
 
-    //     Download::filter_by_id(id)
-    //         .filter(Download::fields().status().eq(task.status))
-    //         .update()
-    //         .status(Status::Failed)
-    //         .error_message(message)
-    //         .finished_at(Timestamp::now())
-    //         .exec(&mut db)
-    //         .await?;
-    //     Ok(())
-    // }
+    async fn download_resource(
+        &self,
+        id: i64,
+        version: i64,
+        resource: Resource,
+        cancellation: CancellationToken,
+    ) -> Result<DownloadResult, ServiceError> {
+        let (progress_tx, progress_rx) = mpsc::unbounded_channel();
 
-    // async fn ensure_status(
-    //     &self,
-    //     id: i64,
-    //     expected: Status,
-    //     next: Status,
-    // ) -> Result<(), ServiceError> {
-    //     let mut db = self.db.clone();
-    //     let task = Download::get_by_id(&mut db, &id).await?;
-    //     if task.status == next {
-    //         return Ok(());
-    //     }
-    //     Err(ServiceError::InvalidState {
-    //         expected,
-    //         actual: task.status,
-    //     })
-    // }
+        let repo = self.repository.clone();
+        let progress_task = tokio::spawn(persist_progress(repo, id, version, progress_rx));
+        let result = self
+            .downloader
+            .download(
+                resource,
+                DownloadOptions {
+                    task_id: id,
+                    cancellation,
+                    progress: Some(move |progress| {
+                        let _ = progress_tx.send(progress);
+                    }),
+                },
+            )
+            .await;
+
+        progress_task.await??;
+        Ok(result?)
+    }
+
+    async fn handle_download_failure(
+        &self,
+        task: &Download,
+        stage: Status,
+        error: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let message = error.to_string();
+
+        if is_interrupted(error) {
+            self.repository
+                .requeue_interrupted_download(task.id, task.version, &message)
+                .await?;
+            return Ok(());
+        }
+
+        // 已经执行过 MAX_RETRIES 次重试，或者错误不可重试，标记失败。
+        if task.retry_count >= MAX_RETRIES || !is_retryable(error) {
+            self.repository
+                .mark_failed(task.id, task.version, &message)
+                .await?;
+            return Ok(());
+        }
+
+        let next_retry_count = task.retry_count + 1;
+        let delay = retry_delay(next_retry_count);
+        let next_retry_at = next_retry_at(delay);
+        self.repository
+            .requeue_download(task.id, task.version, next_retry_at, &message)
+            .await?;
+
+        tracing::warn!(
+          task_id = task.id,
+          version = task.version,
+          retry_count = next_retry_count,
+          delay_seconds = delay.as_secs(),
+          ?stage,
+          error = %error,
+          "下载任务等待重试"
+        );
+        Ok(())
+    }
+
+    async fn handle_tagging_failure(
+        &self,
+        task: &Download,
+        error: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let message = error.to_string();
+
+        if is_interrupted(error) {
+            self.repository
+                .requeue_interrupted_tagging(task.id, task.version, &message)
+                .await?;
+            return Ok(());
+        }
+
+        if task.retry_count >= MAX_RETRIES || !is_retryable(error) {
+            self.repository
+                .mark_failed(task.id, task.version, &message)
+                .await?;
+            return Ok(());
+        }
+
+        let next_retry_count = task.retry_count + 1;
+        let delay = retry_delay(next_retry_count);
+        let next_retry_at = next_retry_at(delay);
+        self.repository
+            .requeue_tagging(task.id, task.version, next_retry_at, &message)
+            .await?;
+
+        tracing::warn!(
+            task_id = task.id,
+            version = task.version,
+            retry_count = next_retry_count,
+            delay_seconds = delay.as_secs(),
+            error = %error,
+            "标签任务等待重试"
+        );
+
+        Ok(())
+    }
 }
 
-// async fn persist_progress(
-//     mut db: toasty::Db,
-//     id: i64,
-//     mut progress_rx: tokio::sync::mpsc::UnboundedReceiver<DownloadProgress>,
-// ) -> Result<(), ServiceError> {
-//     let mut ticker = time::interval(Duration::from_millis(500));
-//     let mut latest = None;
-
-//     loop {
-//         tokio::select! {
-//             progress = progress_rx.recv() => match progress {
-//                 Some(progress) => latest = Some(progress),
-//                 None => {
-//                     if let Some(progress) = latest.take() {
-//                         write_progress(&mut db, id, progress).await?;
-//                     }
-//                     return Ok(());
-//                 }
-//             },
-//             _ = ticker.tick() => {
-//                 if let Some(progress) = latest.take() {
-//                     write_progress(&mut db, id, progress).await?;
-//                 }
-//             }
-//         }
-//     }
-// }
-
-// async fn write_progress(
-//     db: &mut toasty::Db,
-//     id: i64,
-//     progress: DownloadProgress,
-// ) -> Result<(), ServiceError> {
-//     let downloaded = i64::try_from(progress.downloaded).map_err(|_| ServiceError::SizeOverflow)?;
-//     let update = Download::filter_by_id(id)
-//         .filter(Download::fields().status().eq(Status::Downloading))
-//         .update()
-//         .downloaded_bytes(downloaded);
-
-//     if let Some(total) = progress.total {
-//         let total = i64::try_from(total).map_err(|_| ServiceError::SizeOverflow)?;
-//         update.total_bytes(total).exec(db).await?;
-//     } else {
-//         update.exec(db).await?;
-//     }
-//     Ok(())
-// }
-
-fn path_to_string(path: &Path) -> Result<String, ServiceError> {
-    path.to_str()
-        .map(ToOwned::to_owned)
-        .ok_or(ServiceError::Download(
-            crate::error::DownloadError::InvalidFileName,
-        ))
+// 每500ms合并写一次当前进度
+async fn persist_progress(
+    repository: Repository,
+    id: i64,
+    version: i64,
+    mut receiver: mpsc::UnboundedReceiver<DownloadProgress>,
+) -> Result<(), ServiceError> {
+    let mut ticker = time::interval(Duration::from_millis(500));
+    let mut latest = None;
+    loop {
+        tokio::select! {
+          progress = receiver.recv() => {
+            match progress {
+                Some(progress) => {
+                  latest = Some(progress)
+                }
+                None => {
+                  if let Some(progress) = latest.take() {
+                    write_progress(&repository,id,version,progress).await?;
+                  }
+                  return Ok(());
+                }
+            }
+          }
+          _ = ticker.tick() => {
+            if let Some(progress) = latest.take() {
+              write_progress(&repository, id, version, progress).await?;
+            }
+          }
+        }
+    }
 }
 
-// fn is_unique_violation(err: &toasty::Error) -> bool {
-//     err.to_string().contains("UNIQUE constraint failed")
-// }
+async fn write_progress(
+    repository: &Repository,
+    id: i64,
+    version: i64,
+    progress: DownloadProgress,
+) -> Result<(), ServiceError> {
+    let downloaded = i64::try_from(progress.downloaded).map_err(|_| ServiceError::SizeOverflow)?;
+    let total = progress
+        .total
+        .map(i64::try_from)
+        .transpose()
+        .map_err(|_| ServiceError::SizeOverflow)?;
+    repository
+        .update_progress(id, version, downloaded, total)
+        .await?;
+    Ok(())
+}
+
+fn is_retryable(error: &ServiceError) -> bool {
+    !matches!(
+        error,
+        ServiceError::InvalidProvider
+            | ServiceError::MissingDownloadPath
+            | ServiceError::Provider(
+                ProviderError::UnsupportedQuality(_) | ProviderError::InvalidArgument(_),
+            )
+            | ServiceError::Download(
+                DownloadError::InvalidUrl
+                    | DownloadError::InvalidFileName
+                    | DownloadError::TooLarge,
+            )
+            | ServiceError::Tag(TagError::InvalidCoverUrl | TagError::UnsupportedCoverFormat)
+    )
+}
+
+fn is_interrupted(error: &ServiceError) -> bool {
+    matches!(
+        error,
+        ServiceError::Interrupted | ServiceError::Download(DownloadError::Cancelled)
+    )
+}
+
+fn retry_delay(retry_count: i64) -> Duration {
+    let exponent = retry_count.saturating_sub(1).clamp(0, 8) as u32;
+    let seconds = BASE_RETRY_DELAY_SECS
+        .saturating_mul(2_u64.saturating_pow(exponent))
+        .min(MAX_RETRY_DELAY_SECS);
+
+    Duration::from_secs(seconds)
+}
+
+fn next_retry_at(delay: Duration) -> OffsetDateTime {
+    OffsetDateTime::now_utc() + TimeDuration::seconds(delay.as_secs() as i64)
+}
+
+struct PublishedFile {
+    path: PathBuf,
+    created: bool,
+}
+
+async fn publish_ready_file(
+    task: &Download,
+    ready_path: &Path,
+) -> Result<PublishedFile, ServiceError> {
+    let parent = ready_path
+        .parent()
+        .ok_or(ServiceError::Download(DownloadError::InvalidFileName))?;
+    let extension = ready_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .ok_or(ServiceError::Download(DownloadError::InvalidFileName))?;
+    let title = sanitize_filename_component(&task.metadata.name, "未知歌曲");
+    let artists = sanitize_filename_component(&task.metadata.artists.join(", "), "未知歌手");
+    let stem = format!("{title} - {artists}");
+
+    let candidates = [
+        parent.join(format!("{stem}.{extension}")),
+        parent.join(format!("{stem} ({}).{extension}", task.id)),
+    ];
+
+    for target in candidates {
+        match fs::hard_link(ready_path, &target).await {
+            Ok(()) => {
+                return Ok(PublishedFile {
+                    path: target,
+                    created: true,
+                });
+            }
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                if files_are_same(ready_path, &target).await? {
+                    return Ok(PublishedFile {
+                        path: target,
+                        created: false,
+                    });
+                }
+            }
+            Err(error) => return Err(ServiceError::Download(DownloadError::Io(error))),
+        }
+    }
+
+    Err(ServiceError::Download(DownloadError::TargetExists))
+}
+
+fn sanitize_filename_component(value: &str, fallback: &str) -> String {
+    let value: String = value
+        .chars()
+        .map(|character| {
+            if character.is_control()
+                || matches!(
+                    character,
+                    '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+                )
+            {
+                '_'
+            } else {
+                character
+            }
+        })
+        .take(100)
+        .collect();
+    let value = value.trim().trim_matches('.');
+
+    if value.is_empty() {
+        fallback.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+#[cfg(unix)]
+async fn files_are_same(left: &Path, right: &Path) -> Result<bool, ServiceError> {
+    use std::os::unix::fs::MetadataExt;
+
+    let left = fs::metadata(left).await.map_err(DownloadError::Io)?;
+    let right = fs::metadata(right).await.map_err(DownloadError::Io)?;
+    Ok(left.dev() == right.dev() && left.ino() == right.ino())
+}
+
+#[cfg(not(unix))]
+async fn files_are_same(_left: &Path, _right: &Path) -> Result<bool, ServiceError> {
+    Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{retry_delay, sanitize_filename_component};
+
+    #[test]
+    fn sanitizes_file_name_components() {
+        assert_eq!(
+            sanitize_filename_component("  song/name:*?  ", "fallback"),
+            "song_name___"
+        );
+        assert_eq!(sanitize_filename_component("...", "fallback"), "fallback");
+    }
+
+    #[test]
+    fn retry_delay_uses_exponential_backoff_with_cap() {
+        assert_eq!(retry_delay(1).as_secs(), 2);
+        assert_eq!(retry_delay(2).as_secs(), 4);
+        assert_eq!(retry_delay(3).as_secs(), 8);
+        assert_eq!(retry_delay(10).as_secs(), 300);
+    }
+}

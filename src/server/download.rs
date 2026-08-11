@@ -5,12 +5,13 @@ use reqwest::{
 };
 use std::{
     io::{ErrorKind, SeekFrom},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 use tokio::{
     fs,
     io::{AsyncSeekExt, AsyncWriteExt},
 };
+use tokio_util::sync::CancellationToken;
 
 use crate::{error::DownloadError, model::Resource};
 
@@ -25,7 +26,7 @@ where
     F: Fn(DownloadProgress) + Send + Sync,
 {
     pub task_id: i64,
-    pub file_name: String,
+    pub cancellation: CancellationToken,
     pub progress: Option<F>,
 }
 
@@ -64,19 +65,21 @@ impl Downloader {
             return Err(DownloadError::InvalidUrl);
         }
 
-        let file_name = build_file_name(
-            &options.file_name,
-            resource.provider,
-            &resource.track_id,
-            resource.quality.format,
-        )?;
+        let file_name = build_ready_file_name(options.task_id, resource.quality.format)?;
         // 创建目录
         fs::create_dir_all(&self.dir).await?;
 
-        // 最终文件名只能位于下载目录内，避免绝对路径和../路径穿越。
+        // 完整下载先发布为任务专属的隐藏 ready 文件，打完标签后再改成用户可见名称。
         let target = self.dir.join(&file_name);
         if fs::try_exists(&target).await? {
-            return Err(DownloadError::TargetExists);
+            let size = fs::metadata(&target).await?.len();
+            if size == 0 {
+                return Err(DownloadError::Empty);
+            }
+            if size > self.max_bytes {
+                return Err(DownloadError::TooLarge);
+            }
+            return Ok(DownloadResult { path: target, size });
         }
 
         // 临时文件
@@ -105,7 +108,12 @@ impl Downloader {
             request = request.header(RANGE, format!("bytes={downloaded}-"));
         }
 
-        let resp = request.send().await?;
+        let resp = tokio::select! {
+            _ = options.cancellation.cancelled() => {
+                return Err(DownloadError::Cancelled);
+            }
+            response = request.send() => response?,
+        };
         let status = resp.status();
 
         if status != reqwest::StatusCode::OK && status != reqwest::StatusCode::PARTIAL_CONTENT {
@@ -156,7 +164,16 @@ impl Downloader {
 
         // 流式下载
         let mut stream = resp.bytes_stream();
-        while let Some(chunk) = stream.next().await {
+        loop {
+            let chunk = tokio::select! {
+                _ = options.cancellation.cancelled() => {
+                    return Err(DownloadError::Cancelled);
+                }
+                chunk = stream.next() => chunk,
+            };
+            let Some(chunk) = chunk else {
+                break;
+            };
             let bytes = chunk?;
 
             downloaded += bytes.len() as u64;
@@ -189,7 +206,7 @@ impl Downloader {
         file.sync_all().await?;
         drop(file);
 
-        // hard_link 会在目标已存在时原子失败，避免并发任务静默覆盖文件。
+        // hard_link 会在 ready 文件已存在时原子失败，避免并发任务静默覆盖文件。
         fs::hard_link(&temp, &target).await.map_err(|err| {
             if err.kind() == ErrorKind::AlreadyExists {
                 DownloadError::TargetExists
@@ -198,11 +215,11 @@ impl Downloader {
             }
         })?;
         if let Err(err) = fs::remove_file(&temp).await {
-            // 正式文件已经原子发布，清理隐藏临时链接失败不应把成功下载报告为失败。
+            // ready 文件已经原子发布，清理 part 链接失败不应把成功下载报告为失败。
             tracing::warn!(path = ?temp, error = %err, "清理下载临时文件失败");
         }
 
-        // 正式文件发布成功后，以实际大小结束进度；长度未知的响应也能落库总大小。
+        // ready 文件发布成功后，以实际大小结束进度；长度未知的响应也能落库总大小。
         if let Some(callback) = &options.progress {
             callback(DownloadProgress {
                 downloaded,
@@ -217,42 +234,13 @@ impl Downloader {
     }
 }
 
-fn validate_file_name(file_name: &str) -> Result<&Path, DownloadError> {
-    let path = Path::new(file_name);
-    if path.file_name() != Some(path.as_os_str()) {
-        return Err(DownloadError::InvalidFileName);
-    }
-    Ok(path)
-}
-
-fn build_file_name(
-    requested: &str,
-    provider: &str,
-    track_id: &str,
-    format: &str,
-) -> Result<String, DownloadError> {
+fn build_ready_file_name(task_id: i64, format: &str) -> Result<String, DownloadError> {
     let format = format.trim().trim_start_matches('.');
     if format.is_empty() || !format.chars().all(|ch| ch.is_ascii_alphanumeric()) {
         return Err(DownloadError::InvalidFileName);
     }
 
-    let mut file_name = requested.trim().to_string();
-    if file_name.is_empty() {
-        file_name = format!("{provider}-{track_id}");
-    }
-    validate_file_name(&file_name)?;
-
-    let has_expected_extension = Path::new(&file_name)
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case(format));
-    if !has_expected_extension {
-        file_name.push('.');
-        file_name.push_str(format);
-    }
-
-    validate_file_name(&file_name)?;
-    Ok(file_name)
+    Ok(format!(".download-{task_id}.ready.{format}"))
 }
 
 fn is_non_audio_content_type(content_type: &str) -> bool {
@@ -289,45 +277,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepts_plain_file_name() {
+    fn builds_task_specific_ready_file_name() {
         assert_eq!(
-            validate_file_name("track.flac").unwrap(),
-            Path::new("track.flac")
+            build_ready_file_name(42, "flac").unwrap(),
+            ".download-42.ready.flac"
         );
-    }
-
-    #[test]
-    fn rejects_paths_as_file_names() {
-        for name in [
-            "",
-            ".",
-            "..",
-            "../track.flac",
-            "dir/track.flac",
-            "/tmp/track.flac",
-        ] {
-            assert!(matches!(
-                validate_file_name(name),
-                Err(DownloadError::InvalidFileName)
-            ));
-        }
-    }
-
-    #[test]
-    fn builds_file_name_and_expected_extension() {
-        assert_eq!(
-            build_file_name("", "kuwo", "123", "flac").unwrap(),
-            "kuwo-123.flac"
-        );
-        assert_eq!(
-            build_file_name("track.FLAC", "kuwo", "123", "flac").unwrap(),
-            "track.FLAC"
-        );
-        assert_eq!(
-            build_file_name("track.mp3", "kuwo", "123", "flac").unwrap(),
-            "track.mp3.flac"
-        );
-        assert!(build_file_name("../track", "kuwo", "123", "flac").is_err());
+        assert!(build_ready_file_name(42, "../flac").is_err());
     }
 
     #[test]

@@ -29,8 +29,13 @@ impl Status {
                     | (Self::Downloading, Self::Downloaded)
                     | (Self::Downloaded, Self::Tagging)
                     | (Self::Tagging, Self::Completed)
-                    | (Self::Downloading, Self::Paused)
-                    | (Self::Paused, Self::Downloading)
+                    | (Self::Resolving | Self::Downloading, Self::Pending)
+                    | (Self::Tagging, Self::Downloaded)
+                    | (
+                        Self::Pending | Self::Resolving | Self::Downloading,
+                        Self::Paused,
+                    )
+                    | (Self::Paused, Self::Pending)
                     | (
                         Self::Pending
                             | Self::Resolving
@@ -62,14 +67,14 @@ pub struct Download {
     pub downloaded_bytes: i64,
     pub total_bytes: Option<i64>,
 
-    pub attempt: i64,
+    pub version: i64,
+    pub retry_count: i64,
+    pub next_retry_at: Option<OffsetDateTime>,
 
-    pub resource_url: Option<String>,
     pub path: Option<String>,
     pub error_message: Option<String>,
 
     pub created_at: OffsetDateTime,
-    pub started_at: Option<OffsetDateTime>,
     pub finished_at: Option<OffsetDateTime>,
     pub updated_at: OffsetDateTime,
 }
@@ -86,13 +91,9 @@ pub struct Song {
     pub updated_at: OffsetDateTime,
 }
 
-pub struct Artist {
-    pub id: i64,
-    pub name: String,
-}
-
 #[derive(Debug, Clone)]
 pub struct SongArtist {
+    pub id: i64,
     pub song_id: i64,
-    pub artist_id: i64,
+    pub artist: String,
 }

@@ -54,6 +54,7 @@ pub struct Metadata {
     pub artists: Vec<String>,
     pub album: String,
     pub album_artist: String,
+    // 改成date?
     pub date: String,
     pub cover_url: String,
 }

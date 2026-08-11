@@ -25,15 +25,17 @@ CREATE TABLE downloads (
     -- 下载进度
     downloaded_bytes INTEGER NOT NULL DEFAULT 0 CHECK(downloaded_bytes >= 0),
     total_bytes INTEGER CHECK(total_bytes IS NULL OR total_bytes >= 0),
-    -- 执行次数，仅用于重试和退避
-    attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt >= 0),
+    -- Worker 每次领取时递增，作为防止旧 Worker 提交的版本号
+    version INTEGER NOT NULL DEFAULT 0 CHECK(version >= 0),
+    -- 当前处理阶段连续失败次数；进入下一阶段后清零
+    retry_count INTEGER NOT NULL DEFAULT 0 CHECK(retry_count >= 0),
+    -- NULL 表示可以立即领取，否则需等待到指定时间
+    next_retry_at DATETIME,
 
-    resource_url TEXT,
     path TEXT,
     error_message TEXT,
 
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    started_at DATETIME,
     finished_at DATETIME,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -54,25 +56,24 @@ CREATE TABLE songs (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE artists (
+CREATE TABLE song_artists (
     id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE
+
+    song_id INTEGER NOT NULL,
+    artist TEXT NOT NULL,
+    UNIQUE(song_id, artist),
+
+    FOREIGN KEY(song_id) REFERENCES songs(id) ON DELETE CASCADE
 );
 
-CREATE TABLE song_artists (
-    song_id INTEGER NOT NULL,
-    artist_id INTEGER NOT NULL,
-
-    PRIMARY KEY(song_id, artist_id),
-    FOREIGN KEY(song_id) REFERENCES songs(id) ON DELETE CASCADE,
-    FOREIGN KEY(artist_id) REFERENCES artists(id) ON DELETE CASCADE
-) WITHOUT ROWID;
-
--- worker 获取待执行任务时使用
-CREATE INDEX idx_downloads_status_created ON downloads(status, created_at, id);
-CREATE INDEX idx_songs_name ON songs(name);
-CREATE INDEX idx_artists_name ON artists(name);
-CREATE INDEX idx_songs_scan_token ON songs(scan_token);
--- PRIMARY KEY(song_id, artist_id) 已覆盖 song_id 查询，
--- 反向按 artist_id 查询需要额外索引。
-CREATE INDEX idx_song_artists_artist_id ON song_artists(artist_id);
+CREATE INDEX idx_downloads_status_retry_created
+    ON downloads(status, next_retry_at, created_at, id);
+-- 按歌名查询
+CREATE INDEX idx_songs_name 
+    ON songs(name);
+-- 同步曲库使用
+CREATE INDEX idx_songs_scan_token 
+    ON songs(scan_token);
+-- 查询歌曲对应的歌手，按id排序
+CREATE INDEX idx_song_artists_song_id_id
+    ON song_artists(song_id, id);

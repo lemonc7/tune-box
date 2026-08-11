@@ -31,8 +31,8 @@ impl Embedder {
     pub async fn embed_flac(
         &self,
         path: impl AsRef<Path>,
-        metadata: &Metadata,
-        lyrics: &str,
+        metadata: Metadata,
+        lyrics: String,
     ) -> Result<(), TagError> {
         let path = path.as_ref();
 
@@ -49,12 +49,12 @@ impl Embedder {
         };
 
         // 写入常见元数据字段
-        Self::set_tag_field(tag, ItemKey::TrackTitle, &metadata.name);
+        Self::set_tag_field(tag, ItemKey::TrackTitle, metadata.name);
         Self::set_artists(tag, &metadata.artists);
-        Self::set_tag_field(tag, ItemKey::AlbumTitle, &metadata.album);
+        Self::set_tag_field(tag, ItemKey::AlbumTitle, metadata.album);
         Self::set_tag_field(tag, ItemKey::Lyrics, lyrics);
-        Self::set_tag_field(tag, ItemKey::AlbumArtist, &metadata.album_artist);
-        Self::set_tag_field(tag, ItemKey::RecordingDate, &metadata.date);
+        Self::set_tag_field(tag, ItemKey::AlbumArtist, metadata.album_artist);
+        Self::set_tag_field(tag, ItemKey::RecordingDate, metadata.date);
 
         // metadata是完整快照：先清理旧的正面封面；其他类型图片保持不变。
         tag.remove_picture_type(PictureType::CoverFront);
@@ -73,13 +73,21 @@ impl Embedder {
         Ok(())
     }
 
-    fn set_tag_field(tag: &mut Tag, key: ItemKey, value: &str) {
-        let value = value.trim();
-        if value.is_empty() {
+    fn set_tag_field(tag: &mut Tag, key: ItemKey, value: String) {
+        if value.trim().is_empty() {
             tag.remove_key(key);
-        } else {
-            tag.insert_text(key, value.to_string());
+            return;
+        };
+
+        let mut value = value;
+        let end = value.trim_end().len();
+        value.truncate(end);
+        let start = value.len() - value.trim_start().len();
+        if start > 0 {
+            value.drain(..start);
         }
+
+        tag.insert_text(key, value);
     }
 
     fn set_artists(tag: &mut Tag, artists: &[String]) {
@@ -173,10 +181,10 @@ mod tests {
         let mut tag = Tag::new(TagType::VorbisComments);
         tag.insert_text(ItemKey::TrackTitle, "old title".to_string());
 
-        Embedder::set_tag_field(&mut tag, ItemKey::TrackTitle, " new title ");
+        Embedder::set_tag_field(&mut tag, ItemKey::TrackTitle, " new title ".to_string());
         assert_eq!(tag.get_string(ItemKey::TrackTitle), Some("new title"));
 
-        Embedder::set_tag_field(&mut tag, ItemKey::TrackTitle, "  ");
+        Embedder::set_tag_field(&mut tag, ItemKey::TrackTitle, "  ".to_string());
         assert_eq!(tag.get_string(ItemKey::TrackTitle), None);
     }
 
