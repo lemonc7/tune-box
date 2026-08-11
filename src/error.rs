@@ -1,3 +1,7 @@
+use thiserror::Error;
+
+use crate::server::db::model::Status;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
     #[error("网络错误: {0}")]
@@ -60,14 +64,34 @@ pub enum TagError {
     Encoding(#[from] lofty::error::FileEncodingError),
 }
 
+#[derive(Debug, Error)]
+pub enum DatabaseError {
+    #[error("数据库错误: {0}")]
+    Sqlx(#[from] sqlx::Error),
+    #[error("数据库迁移错误: {0}")]
+    Migration(#[from] sqlx::migrate::MigrateError),
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
     #[error("无效的provider")]
     InvalidProvider,
     #[error("任务已存在")]
     AlreadyExists,
-    #[error("metadata编码失败: {0}")]
-    MetadataSerializationFailed(#[from] serde_json::Error),
-    #[error("数据库操作出错: {0}")]
-    Db(#[from] toasty::Error),
+    #[error("任务状态已变化，期望 {expected:?}，实际 {actual:?}")]
+    InvalidState { expected: Status, actual: Status },
+    #[error("不允许从 {from:?} 转换到 {to:?}")]
+    InvalidTransition { from: Status, to: Status },
+    #[error("Provider 操作失败: {0}")]
+    Provider(#[from] ProviderError),
+    #[error("下载失败: {0}")]
+    Download(#[from] DownloadError),
+    #[error("写入标签失败: {0}")]
+    Tag(#[from] TagError),
+    #[error("进度任务异常结束: {0}")]
+    ProgressTask(#[from] tokio::task::JoinError),
+    #[error("文件大小超过数据库 INTEGER 范围")]
+    SizeOverflow,
+    #[error("任务尝试次数超过数据库 INTEGER 范围")]
+    AttemptOverflow,
 }

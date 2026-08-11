@@ -8,7 +8,7 @@ use crate::{
 pub mod kuwo;
 
 #[async_trait]
-pub trait Provider {
+pub trait Provider: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
     async fn search(
