@@ -15,6 +15,7 @@ impl Repository {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
+
     // 原子领取下一个任务，优先领取下载好的准备打标签的任务
     pub async fn claim_next(&self) -> Result<Option<Download>, sqlx::Error> {
         sqlx::query_as!(
@@ -33,7 +34,10 @@ impl Repository {
             WHERE id = (
                 SELECT id FROM downloads
                 WHERE status IN ('pending', 'downloaded')
-                  AND (next_retry_at IS NULL OR next_retry_at <= CURRENT_TIMESTAMP)
+                  AND (
+                      next_retry_at IS NULL
+                      OR julianday(next_retry_at) <= julianday('now')
+                  )
                 ORDER BY
                     CASE status
                         WHEN 'downloaded' THEN 0
@@ -498,15 +502,49 @@ impl Repository {
                     WHEN status IN ('resolving', 'downloading') THEN 'pending'
                     WHEN status = 'tagging' THEN 'downloaded'
                 END,
+                version = version + 1,
                 next_retry_at = NULL,
                 error_message = '上一次执行意外中断，任务已恢复',
+                finished_at = NULL,
                 updated_at = CURRENT_TIMESTAMP
             WHERE status IN ('resolving', 'downloading', 'tagging')
-          "#
+            "#
         )
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected())
+    }
+
+    /// 恢复一个异常退出的 Worker；版本条件防止旧 Worker 覆盖后来重新领取的任务。
+    pub async fn recover_worker(
+        &self,
+        id: i64,
+        version: i64,
+        message: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query!(
+            r#"
+            UPDATE downloads
+            SET status = CASE
+                    WHEN status IN ('resolving', 'downloading') THEN 'pending'
+                    WHEN status = 'tagging' THEN 'downloaded'
+                END,
+                next_retry_at = NULL,
+                error_message = ?,
+                finished_at = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND version = ?
+              AND status IN ('resolving', 'downloading', 'tagging')
+            "#,
+            message,
+            id,
+            version,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() == 1)
     }
 }
 
@@ -532,6 +570,34 @@ mod tests {
                 cover_url: String::new(),
             },
         }
+    }
+
+    #[tokio::test]
+    async fn worker_recovery_is_fenced_by_version() {
+        let repository = Repository::new(db::connect_memory().await.unwrap());
+        let task = repository
+            .add_download(request("worker-panic"))
+            .await
+            .unwrap()
+            .unwrap();
+        let claim = repository.claim_next().await.unwrap().unwrap();
+
+        assert!(
+            !repository
+                .recover_worker(task.id, claim.version + 1, "stale worker")
+                .await
+                .unwrap()
+        );
+        assert!(
+            repository
+                .recover_worker(task.id, claim.version, "worker panic")
+                .await
+                .unwrap()
+        );
+
+        let reclaimed = repository.claim_next().await.unwrap().unwrap();
+        assert_eq!(reclaimed.id, task.id);
+        assert!(reclaimed.version > claim.version);
     }
 
     #[tokio::test]
@@ -676,8 +742,10 @@ mod tests {
         );
         assert!(repository.claim_next().await.unwrap().is_none());
 
+        let due_at = OffsetDateTime::now_utc() - time::Duration::seconds(1);
         sqlx::query!(
-            "UPDATE downloads SET next_retry_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "UPDATE downloads SET next_retry_at = ? WHERE id = ?",
+            due_at,
             task.id
         )
         .execute(&repository.pool)

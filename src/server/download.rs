@@ -60,8 +60,7 @@ impl Downloader {
         F: Fn(DownloadProgress) + Send + Sync,
     {
         let url = Url::parse(&resource.url).map_err(|_| DownloadError::InvalidUrl)?;
-        let schema = url.scheme();
-        if !matches!(schema, "http" | "https") {
+        if !matches!(url.scheme(), "http" | "https") {
             return Err(DownloadError::InvalidUrl);
         }
 
@@ -96,7 +95,7 @@ impl Downloader {
             return Err(DownloadError::TooLarge);
         }
 
-        // 创建请求。Provider 不能设置 Range，断点位置只能由本地临时文件决定。
+        // 创建请求。Provider不能设置Range，断点位置只能由本地临时文件决定。
         let mut request = self.client.get(&resource.url);
         for (key, value) in resource.headers {
             if key.eq_ignore_ascii_case(RANGE.as_str()) {

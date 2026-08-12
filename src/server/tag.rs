@@ -28,15 +28,29 @@ impl Embedder {
     pub fn new(client: reqwest::Client) -> Self {
         Self { client }
     }
+
     pub async fn embed_flac(
         &self,
         path: impl AsRef<Path>,
         metadata: Metadata,
         lyrics: String,
     ) -> Result<(), TagError> {
-        let path = path.as_ref();
-
         let cover_info = self.fetch_cover(&metadata.cover_url).await?;
+        let path = path.as_ref().to_owned();
+
+        // Lofty的解析和落盘API是同步阻塞操作，不能直接占用Tokio worker。
+        tokio::task::spawn_blocking(move || {
+            Self::write_flac_tags(&path, metadata, lyrics, cover_info)
+        })
+        .await?
+    }
+
+    fn write_flac_tags(
+        path: &Path,
+        metadata: Metadata,
+        lyrics: String,
+        cover_info: Option<Vec<u8>>,
+    ) -> Result<(), TagError> {
         let mut tagged_file = Probe::open(path)?.read()?;
         // 获取或新建 primary tag
         let tag = match tagged_file.primary_tag_mut() {
@@ -113,8 +127,7 @@ impl Embedder {
         }
 
         let url = Url::parse(cover_url).map_err(|_| TagError::InvalidCoverUrl)?;
-        let scheme = url.scheme();
-        if scheme != "http" && scheme != "https" {
+        if !matches!(url.scheme(), "http" | "https") {
             return Err(TagError::InvalidCoverUrl);
         }
 
@@ -147,7 +160,12 @@ impl Embedder {
         Ok(Some(data))
     }
 
-    pub fn read_flac_metadata(path: impl AsRef<Path>) -> Result<FlacInfo, TagError> {
+    pub async fn read_flac_metadata(path: impl AsRef<Path>) -> Result<FlacInfo, TagError> {
+        let path = path.as_ref().to_owned();
+        tokio::task::spawn_blocking(move || Self::read_flac_metadata_blocking(&path)).await?
+    }
+
+    fn read_flac_metadata_blocking(path: &Path) -> Result<FlacInfo, TagError> {
         let tagged_file = Probe::open(path)?.read()?;
         let mut info = FlacInfo::default();
         if let Some(tag) = tagged_file.primary_tag() {
@@ -163,8 +181,6 @@ impl Embedder {
 
 fn artists_from_tag(tag: &Tag) -> Vec<String> {
     tag.get_strings(ItemKey::TrackArtist)
-        // 兼容旧版本写入的单个 "artist1; artist2" 字段。
-        .flat_map(|artist| artist.split(';'))
         .map(str::trim)
         .filter(|artist| !artist.is_empty())
         .map(ToString::to_string)
@@ -206,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_multiple_and_legacy_artist_fields() {
+    fn reads_each_artist_field_without_guessing_delimiters() {
         let mut tag = Tag::new(TagType::VorbisComments);
         tag.push(TagItem::new(
             ItemKey::TrackArtist,
@@ -219,7 +235,7 @@ mod tests {
 
         assert_eq!(
             artists_from_tag(&tag),
-            ["artist one", "artist two", "artist three"]
+            ["artist one; artist two", "artist three"]
         );
     }
 }

@@ -6,7 +6,7 @@ use std::{
 };
 
 use ::time::{Duration as TimeDuration, OffsetDateTime};
-use tokio::{fs, sync::mpsc, time};
+use tokio::{fs, sync::watch, time};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -72,6 +72,7 @@ impl Service {
         }
     }
 
+    // 下载阶段
     async fn execute_download(
         &self,
         task: Download,
@@ -86,18 +87,18 @@ impl Service {
             }
         };
 
-        // 解析资源
+        // 解析资源，支持取消
         let resolved = tokio::select! {
             _ = cancellation.cancelled() => Err(ServiceError::Interrupted),
-            result = provider.resolve(&task.track_id, &task.quality) => {
-                result.map_err(ServiceError::from)
-            }
+            result = provider.resolve(&task.track_id, &task.quality) => result.map_err(Into::into),
         };
         let resource = match resolved {
             Ok(r) => r,
             Err(err) => {
+                // 调用失败处理
                 self.handle_download_failure(&task, Status::Resolving, &err)
                     .await?;
+                // 正常中断
                 if is_interrupted(&err) {
                     return Ok(());
                 }
@@ -110,8 +111,8 @@ impl Service {
             .repository
             .mark_downloading(task.id, task.version)
             .await?;
+        // 用户可能已经暂停或取消任务
         if !transitioned {
-            // 用户可能已经暂停或取消任务
             return Ok(());
         }
 
@@ -149,11 +150,13 @@ impl Service {
         Ok(())
     }
 
+    // 打标签阶段
     async fn execute_tagging(
         &self,
         task: Download,
         cancellation: CancellationToken,
     ) -> Result<(), ServiceError> {
+        // 获取ready路径
         let path = match task.path.as_deref() {
             Some(path) => path,
             None => {
@@ -170,36 +173,57 @@ impl Service {
                 return Err(error);
             }
         };
-        let result = tokio::select! {
+        // 获取歌词，支持取消
+        let lyrics = tokio::select! {
             _ = cancellation.cancelled() => Err(ServiceError::Interrupted),
-            result = async {
-                let lyrics = provider.lyrics(&task.track_id).await?;
-                self.embedder
-                    .embed_flac(path, task.metadata.0.clone(), lyrics)
-                    .await?;
-                self.publish_and_complete(&task, path).await?;
-                Ok::<(), ServiceError>(())
-            } => result,
+            result = provider.lyrics(&task.track_id) => result.map_err(Into::into),
+        };
+        let lyrics = match lyrics {
+            Ok(lyrics) => lyrics,
+            Err(error) => {
+                self.handle_tagging_failure(&task, &error).await?;
+                if is_interrupted(&error) {
+                    return Ok(());
+                }
+                return Err(error);
+            }
         };
 
+        // 写标签之前再次检查是否已取消
+        if cancellation.is_cancelled() {
+            let error = ServiceError::Interrupted;
+            self.handle_tagging_failure(&task, &error).await?;
+            return Ok(());
+        }
+
+        // Lofty使用spawn_blocking；阻塞任务启动后无法安全强制终止。
+        // 因此从写标签开始进入不可中断区，最终由 status + version 决定是否提交结果。
+        let result = async {
+            self.embedder
+                .embed_flac(path, task.metadata.0.clone(), lyrics)
+                .await?;
+            self.publish_and_complete(&task, path).await?;
+            Ok::<(), ServiceError>(())
+        }
+        .await;
         if let Err(error) = result {
             self.handle_tagging_failure(&task, &error).await?;
-            if is_interrupted(&error) {
-                return Ok(());
-            }
             return Err(error);
         }
 
         Ok(())
     }
 
+    // 发布文件并写入曲库
     async fn publish_and_complete(
         &self,
         task: &Download,
         ready_path: &str,
     ) -> Result<(), ServiceError> {
         let ready_path = Path::new(ready_path);
+        // 发布文件，使用硬链接
         let published = publish_ready_file(task, ready_path).await?;
+
         let file_metadata = fs::metadata(&published.path)
             .await
             .map_err(DownloadError::Io)?;
@@ -214,6 +238,7 @@ impl Service {
             .to_str()
             .ok_or(ServiceError::Download(DownloadError::InvalidFileName))?;
 
+        // 完成任务，并写入歌曲
         let completed = self
             .repository
             .complete_with_song(
@@ -226,7 +251,9 @@ impl Service {
             )
             .await?;
 
+        // 数据库提交失败
         if !completed {
+            // 最终文件是新创建的，就删除这个硬链接
             if published.created
                 && let Err(error) = fs::remove_file(&published.path).await
             {
@@ -235,6 +262,7 @@ impl Service {
             return Ok(());
         }
 
+        // 完成后删除临时ready路径
         if let Err(error) = fs::remove_file(ready_path).await {
             tracing::warn!(path = ?ready_path, %error, "清理 ready 文件失败");
         }
@@ -249,7 +277,8 @@ impl Service {
         resource: Resource,
         cancellation: CancellationToken,
     ) -> Result<DownloadResult, ServiceError> {
-        let (progress_tx, progress_rx) = mpsc::unbounded_channel();
+        // 进度是快照而不是事件，只保留最新值，避免网络较快时消息无限积压。
+        let (progress_tx, progress_rx) = watch::channel(None::<DownloadProgress>);
 
         let repo = self.repository.clone();
         let progress_task = tokio::spawn(persist_progress(repo, id, version, progress_rx));
@@ -261,16 +290,19 @@ impl Service {
                     task_id: id,
                     cancellation,
                     progress: Some(move |progress| {
-                        let _ = progress_tx.send(progress);
+                        // 将watch中的旧进度替换为新进度
+                        progress_tx.send_replace(Some(progress));
                     }),
                 },
             )
-            .await;
+            .await; // 不立即返回错误，先保存进度
 
+        // 等待进度任务结束：Result<Result<(), ServiceError>, JoinError>
         progress_task.await??;
         Ok(result?)
     }
 
+    // 下载失败处理
     async fn handle_download_failure(
         &self,
         task: &Download,
@@ -279,6 +311,7 @@ impl Service {
     ) -> Result<(), ServiceError> {
         let message = error.to_string();
 
+        // 主动中断，将任务重新调整成"pending"状态，等待重试
         if is_interrupted(error) {
             self.repository
                 .requeue_interrupted_download(task.id, task.version, &message)
@@ -294,6 +327,7 @@ impl Service {
             return Ok(());
         }
 
+        // 可重试错误
         let next_retry_count = task.retry_count + 1;
         let delay = retry_delay(next_retry_count);
         let next_retry_at = next_retry_at(delay);
@@ -354,33 +388,42 @@ impl Service {
     }
 }
 
-// 每500ms合并写一次当前进度
 async fn persist_progress(
     repository: Repository,
     id: i64,
     version: i64,
-    mut receiver: mpsc::UnboundedReceiver<DownloadProgress>,
+    mut receiver: watch::Receiver<Option<DownloadProgress>>,
 ) -> Result<(), ServiceError> {
-    let mut ticker = time::interval(Duration::from_millis(500));
+    let mut ticker = time::interval(Duration::from_secs(1));
+    // 内存中的最新进度
     let mut latest = None;
+    // 当前进度有没有尚未写入数据库
+    let mut dirty = false;
     loop {
         tokio::select! {
-          progress = receiver.recv() => {
-            match progress {
-                Some(progress) => {
-                  latest = Some(progress)
+          // watch中出现新进度
+          changed = receiver.changed() => {
+            match changed {
+                Ok(()) => {
+                    // 只更新内存，暂时不写入数据库
+                    latest = *receiver.borrow_and_update();
+                    dirty = latest.is_some();
                 }
-                None => {
-                  if let Some(progress) = latest.take() {
-                    write_progress(&repository,id,version,progress).await?;
-                  }
-                  return Ok(());
+                Err(_) => {
+                    // downloader结束时发送端销毁，这里最后刷新一次进度
+                    if dirty && let Some(progress) = latest.take() {
+                        write_progress(&repository, id, version, progress).await?;
+                    }
+                    return Ok(());
                 }
             }
           }
+          // 定时器
           _ = ticker.tick() => {
-            if let Some(progress) = latest.take() {
+            // 将数据写入到数据库
+            if dirty && let Some(progress) = latest.take() {
               write_progress(&repository, id, version, progress).await?;
+              dirty = false;
             }
           }
         }
@@ -429,6 +472,7 @@ fn is_interrupted(error: &ServiceError) -> bool {
     )
 }
 
+// 指数退避
 fn retry_delay(retry_count: i64) -> Duration {
     let exponent = retry_count.saturating_sub(1).clamp(0, 8) as u32;
     let seconds = BASE_RETRY_DELAY_SECS
@@ -460,31 +504,26 @@ async fn publish_ready_file(
         .ok_or(ServiceError::Download(DownloadError::InvalidFileName))?;
     let title = sanitize_filename_component(&task.metadata.name, "未知歌曲");
     let artists = sanitize_filename_component(&task.metadata.artists.join(", "), "未知歌手");
-    let stem = format!("{title} - {artists}");
+    let stem = format!("{artists} - {title}");
 
-    let candidates = [
-        parent.join(format!("{stem}.{extension}")),
-        parent.join(format!("{stem} ({}).{extension}", task.id)),
-    ];
+    let target = parent.join(format!("{stem}.{extension}"));
 
-    for target in candidates {
-        match fs::hard_link(ready_path, &target).await {
-            Ok(()) => {
+    match fs::hard_link(ready_path, &target).await {
+        Ok(()) => {
+            return Ok(PublishedFile {
+                path: target,
+                created: true,
+            });
+        }
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            if files_are_same(ready_path, &target).await? {
                 return Ok(PublishedFile {
                     path: target,
-                    created: true,
+                    created: false,
                 });
             }
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-                if files_are_same(ready_path, &target).await? {
-                    return Ok(PublishedFile {
-                        path: target,
-                        created: false,
-                    });
-                }
-            }
-            Err(error) => return Err(ServiceError::Download(DownloadError::Io(error))),
         }
+        Err(error) => return Err(ServiceError::Download(DownloadError::Io(error))),
     }
 
     Err(ServiceError::Download(DownloadError::TargetExists))

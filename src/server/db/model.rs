@@ -19,40 +19,6 @@ pub enum Status {
     Cancelled,
 }
 
-impl Status {
-    pub fn can_transition_to(self, next: Self) -> bool {
-        self != next
-            && matches!(
-                (self, next),
-                (Self::Pending, Self::Resolving)
-                    | (Self::Resolving, Self::Downloading)
-                    | (Self::Downloading, Self::Downloaded)
-                    | (Self::Downloaded, Self::Tagging)
-                    | (Self::Tagging, Self::Completed)
-                    | (Self::Resolving | Self::Downloading, Self::Pending)
-                    | (Self::Tagging, Self::Downloaded)
-                    | (
-                        Self::Pending | Self::Resolving | Self::Downloading,
-                        Self::Paused,
-                    )
-                    | (Self::Paused, Self::Pending)
-                    | (
-                        Self::Pending
-                            | Self::Resolving
-                            | Self::Downloading
-                            | Self::Downloaded
-                            | Self::Tagging
-                            | Self::Paused,
-                        Self::Failed | Self::Cancelled
-                    )
-            )
-    }
-
-    pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Download {
     pub id: i64,

@@ -64,6 +64,8 @@ pub enum TagError {
     ParseFile(#[from] lofty::error::FileParseError),
     #[error("编码文件失败: {0}")]
     Encoding(#[from] lofty::error::FileEncodingError),
+    #[error("标签阻塞任务异常结束: {0}")]
+    Join(#[from] tokio::task::JoinError),
 }
 
 #[derive(Debug, Error)]
