@@ -7,8 +7,11 @@ use std::fmt::Write;
 
 use crate::{
     error::ProviderError,
-    model::{self, Quality, Resource, SearchResult},
-    server::provider::Provider,
+    server::{
+        model::{QualitySpec, ResolvedResource},
+        provider::Provider,
+    },
+    shared::music::{Quality, SearchResult, Track as SearchTrack},
 };
 
 const USER_AGENT: &str =
@@ -68,8 +71,6 @@ struct Track {
     album_id: String,
     #[serde(rename = "ARTIST")]
     artist: String,
-    #[serde(rename = "allartistid")]
-    artist_ids: String,
     #[serde(rename = "DURATION")]
     duration: String,
     #[serde(rename = "MUSICRID")]
@@ -212,14 +213,12 @@ impl Provider for KuwoProvider {
                 info.1.clone()
             };
 
-            tracks.push(model::Track {
+            tracks.push(SearchTrack {
                 id,
-                provider: self.id(),
+                provider: self.id().to_string(),
                 name: item.name,
                 artists: split_non_empty(&item.artist, "&"),
-                artist_ids: split_non_empty(&item.artist_ids, "&"),
                 album: item.album,
-                album_id: item.album_id,
                 album_artist,
                 date: info.0,
                 cover_url: cover_url(&item.album_picture),
@@ -229,7 +228,7 @@ impl Provider for KuwoProvider {
         }
 
         Ok(SearchResult {
-            provider: self.id(),
+            provider: self.id().to_string(),
             query: query.to_string(),
             page,
             limit,
@@ -238,7 +237,11 @@ impl Provider for KuwoProvider {
         })
     }
 
-    async fn resolve(&self, track_id: &str, quality_id: &str) -> Result<Resource, ProviderError> {
+    async fn resolve(
+        &self,
+        track_id: &str,
+        quality_id: &str,
+    ) -> Result<ResolvedResource, ProviderError> {
         // 只接受声明过的音质
         let q = find_quality(quality_id);
         let Some(quality) = q else {
@@ -268,7 +271,7 @@ impl Provider for KuwoProvider {
             ));
         }
 
-        Ok(Resource {
+        Ok(ResolvedResource {
             provider: self.id(),
             track_id: track_id.to_string(),
             quality,
@@ -308,36 +311,36 @@ impl Provider for KuwoProvider {
     }
 }
 
-static QUALITIES: &[Quality] = &[
-    Quality {
+static QUALITIES: &[QualitySpec] = &[
+    QualitySpec {
         id: "128kmp3",
         label: "MP3 128K",
         format: "mp3",
         bitrate: 128,
         lossless: false,
     },
-    Quality {
+    QualitySpec {
         id: "192kmp3",
         label: "MP3 192K",
         format: "mp3",
         bitrate: 192,
         lossless: false,
     },
-    Quality {
+    QualitySpec {
         id: "320kmp3",
         label: "MP3 320K",
         format: "mp3",
         bitrate: 320,
         lossless: false,
     },
-    Quality {
+    QualitySpec {
         id: "1000kape",
         label: "APE",
         format: "ape",
         bitrate: 1000,
         lossless: true,
     },
-    Quality {
+    QualitySpec {
         id: "2000kflac",
         label: "FLAC",
         format: "flac",
@@ -346,7 +349,7 @@ static QUALITIES: &[Quality] = &[
     },
 ];
 
-fn find_quality(id: &str) -> Option<Quality> {
+fn find_quality(id: &str) -> Option<QualitySpec> {
     QUALITIES.iter().copied().find(|q| q.id == id)
 }
 
@@ -358,7 +361,7 @@ fn parse_qualities(info: &str, formats: &str) -> Vec<Quality> {
             && let Some(q) = find_quality(id)
         {
             seen.insert(id.to_string());
-            result.push(q)
+            result.push(q.into())
         }
     };
 

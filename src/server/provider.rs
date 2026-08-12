@@ -1,9 +1,6 @@
 use async_trait::async_trait;
 
-use crate::{
-    error::ProviderError,
-    model::{Resource, SearchResult},
-};
+use crate::{error::ProviderError, server::model::ResolvedResource, shared::music::SearchResult};
 
 pub mod kuwo;
 
@@ -17,6 +14,10 @@ pub trait Provider: Send + Sync {
         page: u32,
         limit: u32,
     ) -> Result<SearchResult, ProviderError>;
-    async fn resolve(&self, track_id: &str, quality_id: &str) -> Result<Resource, ProviderError>;
+    async fn resolve(
+        &self,
+        track_id: &str,
+        quality_id: &str,
+    ) -> Result<ResolvedResource, ProviderError>;
     async fn lyrics(&self, track_id: &str) -> Result<String, ProviderError>;
 }

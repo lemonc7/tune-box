@@ -11,16 +11,14 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     error::{DownloadError, ProviderError, ServiceError, TagError},
-    model::Resource,
     server::{
-        db::{
-            model::{Download, Status},
-            repository::Repository,
-        },
+        db::{model::DownloadRow, repository::Repository},
         download::{DownloadOptions, DownloadProgress, DownloadResult, Downloader},
+        model::ResolvedResource,
         provider::Provider,
         tag::Embedder,
     },
+    shared::download::DownloadStatus,
 };
 
 const MAX_RETRIES: i64 = 5;
@@ -59,14 +57,14 @@ impl Service {
     // task必须由claim_next原子领取
     pub async fn execute_claimed(
         &self,
-        task: Download,
+        task: DownloadRow,
         cancellation: CancellationToken,
     ) -> Result<(), ServiceError> {
         match task.status {
-            Status::Resolving => self.execute_download(task, cancellation).await,
-            Status::Tagging => self.execute_tagging(task, cancellation).await,
+            DownloadStatus::Resolving => self.execute_download(task, cancellation).await,
+            DownloadStatus::Tagging => self.execute_tagging(task, cancellation).await,
             actual => Err(ServiceError::InvalidState {
-                expected: Status::Resolving,
+                expected: DownloadStatus::Resolving,
                 actual,
             }),
         }
@@ -75,13 +73,13 @@ impl Service {
     // 下载阶段
     async fn execute_download(
         &self,
-        task: Download,
+        task: DownloadRow,
         cancellation: CancellationToken,
     ) -> Result<(), ServiceError> {
         let provider = match self.provider(&task.provider) {
             Ok(provider) => provider,
             Err(error) => {
-                self.handle_download_failure(&task, Status::Resolving, &error)
+                self.handle_download_failure(&task, DownloadStatus::Resolving, &error)
                     .await?;
                 return Err(error);
             }
@@ -96,7 +94,7 @@ impl Service {
             Ok(r) => r,
             Err(err) => {
                 // 调用失败处理
-                self.handle_download_failure(&task, Status::Resolving, &err)
+                self.handle_download_failure(&task, DownloadStatus::Resolving, &err)
                     .await?;
                 // 正常中断
                 if is_interrupted(&err) {
@@ -123,7 +121,7 @@ impl Service {
         {
             Ok(result) => result,
             Err(error) => {
-                self.handle_download_failure(&task, Status::Downloading, &error)
+                self.handle_download_failure(&task, DownloadStatus::Downloading, &error)
                     .await?;
                 if is_interrupted(&error) {
                     return Ok(());
@@ -153,7 +151,7 @@ impl Service {
     // 打标签阶段
     async fn execute_tagging(
         &self,
-        task: Download,
+        task: DownloadRow,
         cancellation: CancellationToken,
     ) -> Result<(), ServiceError> {
         // 获取ready路径
@@ -217,7 +215,7 @@ impl Service {
     // 发布文件并写入曲库
     async fn publish_and_complete(
         &self,
-        task: &Download,
+        task: &DownloadRow,
         ready_path: &str,
     ) -> Result<(), ServiceError> {
         let ready_path = Path::new(ready_path);
@@ -274,7 +272,7 @@ impl Service {
         &self,
         id: i64,
         version: i64,
-        resource: Resource,
+        resource: ResolvedResource,
         cancellation: CancellationToken,
     ) -> Result<DownloadResult, ServiceError> {
         // 进度是快照而不是事件，只保留最新值，避免网络较快时消息无限积压。
@@ -305,8 +303,8 @@ impl Service {
     // 下载失败处理
     async fn handle_download_failure(
         &self,
-        task: &Download,
-        stage: Status,
+        task: &DownloadRow,
+        stage: DownloadStatus,
         error: &ServiceError,
     ) -> Result<(), ServiceError> {
         let message = error.to_string();
@@ -349,7 +347,7 @@ impl Service {
 
     async fn handle_tagging_failure(
         &self,
-        task: &Download,
+        task: &DownloadRow,
         error: &ServiceError,
     ) -> Result<(), ServiceError> {
         let message = error.to_string();
@@ -492,7 +490,7 @@ struct PublishedFile {
 }
 
 async fn publish_ready_file(
-    task: &Download,
+    task: &DownloadRow,
     ready_path: &Path,
 ) -> Result<PublishedFile, ServiceError> {
     let parent = ready_path

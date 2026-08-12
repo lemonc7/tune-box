@@ -3,6 +3,7 @@ pub mod db;
 pub mod download;
 pub mod manager;
 pub mod mcp;
+pub mod model;
 pub mod provider;
 pub mod service;
 pub mod tag;

@@ -4,10 +4,9 @@ use tokio::fs;
 
 use crate::server::db;
 
-pub mod app;
 pub mod error;
-pub mod model;
 pub mod server;
+pub mod shared;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

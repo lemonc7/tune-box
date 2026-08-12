@@ -13,7 +13,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::{error::DownloadError, model::Resource};
+use crate::{error::DownloadError, server::model::ResolvedResource};
 
 pub struct Downloader {
     client: reqwest::Client,
@@ -53,7 +53,7 @@ impl Downloader {
 
     pub async fn download<F>(
         &self,
-        resource: Resource,
+        resource: ResolvedResource,
         options: DownloadOptions<F>,
     ) -> Result<DownloadResult, DownloadError>
     where

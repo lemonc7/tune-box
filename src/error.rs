@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::server::db::model::Status;
+use crate::shared::download::DownloadStatus;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
@@ -83,9 +83,15 @@ pub enum ServiceError {
     #[error("任务已存在")]
     AlreadyExists,
     #[error("任务状态已变化，期望 {expected:?}，实际 {actual:?}")]
-    InvalidState { expected: Status, actual: Status },
+    InvalidState {
+        expected: DownloadStatus,
+        actual: DownloadStatus,
+    },
     #[error("不允许从 {from:?} 转换到 {to:?}")]
-    InvalidTransition { from: Status, to: Status },
+    InvalidTransition {
+        from: DownloadStatus,
+        to: DownloadStatus,
+    },
     #[error("Provider 操作失败: {0}")]
     Provider(#[from] ProviderError),
     #[error("下载失败: {0}")]

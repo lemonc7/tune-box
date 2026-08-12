@@ -1,26 +1,13 @@
-use serde::{Deserialize, Serialize};
-use sqlx::{prelude::Type, types::Json};
+use sqlx::types::Json;
 use time::OffsetDateTime;
 
-use crate::model::Metadata;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-#[sqlx(rename_all = "lowercase")]
-pub enum Status {
-    Pending,
-    Resolving,
-    Downloading,
-    Downloaded,
-    Tagging,
-    Paused,
-    Completed,
-    Failed,
-    Cancelled,
-}
+use crate::shared::{
+    download::{DownloadDto, DownloadStatus},
+    music::Metadata,
+};
 
 #[derive(Debug, Clone)]
-pub struct Download {
+pub struct DownloadRow {
     pub id: i64,
 
     pub provider: String,
@@ -28,7 +15,7 @@ pub struct Download {
     pub quality: String,
 
     pub metadata: Json<Metadata>,
-    pub status: Status,
+    pub status: DownloadStatus,
 
     pub downloaded_bytes: i64,
     pub total_bytes: Option<i64>,
@@ -45,8 +32,26 @@ pub struct Download {
     pub updated_at: OffsetDateTime,
 }
 
+impl From<DownloadRow> for DownloadDto {
+    fn from(value: DownloadRow) -> Self {
+        let metadata = value.metadata.0;
+
+        Self {
+            id: value.id,
+            name: metadata.name,
+            artists: metadata.artists,
+            album: metadata.album,
+            date: metadata.date,
+            status: value.status,
+            downloaded_bytes: value.downloaded_bytes,
+            total_bytes: value.total_bytes,
+            error_message: value.error_message,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct Song {
+pub struct SongRow {
     pub id: i64,
     pub path: String,
     pub name: String,
@@ -58,7 +63,7 @@ pub struct Song {
 }
 
 #[derive(Debug, Clone)]
-pub struct SongArtist {
+pub struct SongArtistRow {
     pub id: i64,
     pub song_id: i64,
     pub artist: String,

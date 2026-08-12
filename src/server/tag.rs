@@ -10,7 +10,7 @@ use lofty::{
 };
 use reqwest::Url;
 
-use crate::{error::TagError, model::Metadata};
+use crate::{error::TagError, shared::music::Metadata};
 
 const MAX_COVER_BYTES: usize = 2 * 1024 * 1024;
 
