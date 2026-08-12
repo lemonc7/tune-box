@@ -154,15 +154,15 @@ impl Provider for KuwoProvider {
     async fn search(
         &self,
         query: &str,
-        page: u32,
-        limit: u32,
+        page: i64,
+        limit: i64,
     ) -> Result<SearchResult, ProviderError> {
-        if page == 0 {
+        if page <= 0 {
             return Err(ProviderError::InvalidArgument(
                 "page必须大于等于1".to_string(),
             ));
         }
-        if limit == 0 {
+        if limit <= 0 {
             return Err(ProviderError::InvalidArgument(
                 "limit必须大于等于1".to_string(),
             ));

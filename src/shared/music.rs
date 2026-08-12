@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub name: String,
     pub artists: Vec<String>,
@@ -14,8 +14,8 @@ pub struct Metadata {
 pub struct SearchResult {
     pub provider: String,
     pub query: String,
-    pub page: u32,
-    pub limit: u32,
+    pub page: i64,
+    pub limit: i64,
     pub total: usize,
     pub tracks: Vec<Track>,
 }

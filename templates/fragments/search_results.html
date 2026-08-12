@@ -1,0 +1,20 @@
+{# templates/fragments/search_results.html #} {% if result.tracks.is_empty() %}
+<div
+  class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-8 py-12 text-center text-sm text-slate-400"
+>
+  本页没有符合条件的歌曲
+</div>
+{% else %}
+<div
+  class="mb-3 flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2"
+>
+  <h2 class="text-lg font-bold text-slate-800">搜索结果</h2>
+
+  <span
+    class="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-600"
+  >
+    共 {{ result.total }} 条结果
+  </span>
+</div>
+
+{% include "fragments/track_list.html" %} {% endif %}

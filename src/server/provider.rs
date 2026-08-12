@@ -11,8 +11,8 @@ pub trait Provider: Send + Sync {
     async fn search(
         &self,
         query: &str,
-        page: u32,
-        limit: u32,
+        page: i64,
+        limit: i64,
     ) -> Result<SearchResult, ProviderError>;
     async fn resolve(
         &self,

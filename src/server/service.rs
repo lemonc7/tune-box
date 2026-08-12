@@ -18,7 +18,11 @@ use crate::{
         provider::Provider,
         tag::Embedder,
     },
-    shared::download::DownloadStatus,
+    shared::{
+        download::DownloadStatus,
+        music::{Metadata, SearchResult},
+        request::{CreateDownloadRequest, SearchRequest},
+    },
 };
 
 const MAX_RETRIES: i64 = 5;
@@ -46,8 +50,42 @@ impl Service {
             embedder,
         }
     }
+    pub async fn search(&self, req: SearchRequest) -> Result<SearchResult, ServiceError> {
+        let provider = self.provider(&req.provider)?;
+        let mut result = provider.search(&req.query, req.page, req.limit).await?;
 
-    pub fn provider(&self, name: &str) -> Result<&dyn Provider, ServiceError> {
+        if req.lossless {
+            result.tracks.iter_mut().for_each(|t| {
+                t.qualities.retain(|q| q.lossless);
+            });
+        }
+        Ok(result)
+    }
+
+    pub async fn add_download(
+        &self,
+        req: CreateDownloadRequest,
+    ) -> Result<Option<i64>, ServiceError> {
+        let id = self
+            .repository
+            .add_download(
+                &req.provider,
+                &req.track_id,
+                &req.quality,
+                &Metadata {
+                    name: req.name,
+                    artists: req.artists,
+                    album: req.album,
+                    album_artist: req.album_artist,
+                    date: req.date,
+                    cover_url: req.cover_url,
+                },
+            )
+            .await?;
+        Ok(id)
+    }
+
+    fn provider(&self, name: &str) -> Result<&dyn Provider, ServiceError> {
         self.providers
             .get(name)
             .map(|p| p.as_ref())

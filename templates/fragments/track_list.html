@@ -1,0 +1,91 @@
+{% for track in result.tracks %}
+<article
+  class="group mt-3 flex flex-col gap-3 rounded-xl border border-slate-100 bg-white p-4 transition-all hover:border-indigo-100 hover:shadow-md sm:flex-row sm:items-center"
+>
+  {% if !track.cover_url.is_empty() %}
+  <img
+    src="{{ track.cover_url }}"
+    alt="{{ track.name }}"
+    loading="lazy"
+    class="h-16 w-16 shrink-0 rounded-lg bg-slate-100 object-cover shadow-xs"
+  />
+  {% else %}
+  <div class="h-16 w-16 shrink-0 rounded-lg bg-slate-100"></div>
+  {% endif %}
+
+  <div class="min-w-0 flex-1">
+    <h3 class="truncate text-base font-bold text-slate-800">
+      {{ track.name }}
+    </h3>
+
+    <div class="mt-1 flex items-center gap-2 text-xs text-slate-500">
+      <span class="truncate font-medium text-slate-600">
+        {{ track.artists|join(" / ") }}
+      </span>
+      {% if !track.album.is_empty() %}
+      <span>•</span>
+      <span class="truncate">{{ track.album }}</span>
+      {% endif %} {% if !track.date.is_empty() %}
+      <span>•</span>
+      <span>{{ track.date }}</span>
+      {% endif %}
+    </div>
+
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      {% for quality in track.qualities %}
+      <form
+        class="inline-flex items-center gap-1"
+        hx-post="/downloads"
+        hx-target="#notify-{{ track.provider }}-{{ track.id }}"
+        hx-swap="innerHTML"
+        hx-indicator="find .htmx-indicator"
+        hx-disabled-elt="find button"
+      >
+        <input type="hidden" name="provider" value="{{ track.provider }}" />
+        <input type="hidden" name="trackId" value="{{ track.id }}" />
+        <input type="hidden" name="quality" value="{{ quality.id }}" />
+        <input type="hidden" name="name" value="{{ track.name }}" />
+        <textarea hidden name="artists">
+{{ track.artists|join("\n") }}</textarea
+        >
+        <input type="hidden" name="album" value="{{ track.album }}" />
+        <input
+          type="hidden"
+          name="albumArtist"
+          value="{{ track.album_artist }}"
+        />
+        <input type="hidden" name="date" value="{{ track.date }}" />
+        <input type="hidden" name="coverUrl" value="{{ track.cover_url }}" />
+
+        <button
+          type="submit"
+          class="cursor-pointer rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          下载 · {{ quality.label }}
+        </button>
+
+        <span
+          class="htmx-indicator inline-flex items-center text-xs text-indigo-600"
+        >
+          处理中……
+        </span>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div id="notify-{{ track.provider }}-{{ track.id }}" class="shrink-0"></div>
+</article>
+{% endfor %} {% match next_url %} {% when Some with (url) %}
+<div
+  id="search-more"
+  hx-get="{{ url }}"
+  hx-trigger="revealed once"
+  hx-swap="outerHTML"
+  class="mt-6 flex justify-center py-4"
+>
+  <span class="htmx-indicator text-sm font-medium text-indigo-500">
+    加载更多……
+  </span>
+</div>
+{% when None %} {% endmatch %}

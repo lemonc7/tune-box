@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::music::Metadata;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DownloadRequest {
     pub provider: String,
     pub track_id: String,
@@ -27,7 +27,7 @@ pub enum DownloadStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DownloadDto {
+pub struct Download {
     pub id: i64,
 
     pub name: String,

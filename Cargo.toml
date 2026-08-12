@@ -17,7 +17,7 @@ tokio = { version = "1", features = [
   "fs",
   "io-util",
   "time",
-  "net",
+  "signal",
 ] }
 tokio-util = { version = "0.7", features = ["rt"] }
 toml = "1"
@@ -33,3 +33,7 @@ sqlx = { version = "0.9", default-features = false, features = [
   "time",
   "json",
 ] }
+axum = "0.8"
+garde = { version = "0.23", features = ["derive"] }
+askama = "0.16"
+url = "2"

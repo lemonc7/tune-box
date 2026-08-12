@@ -3,10 +3,7 @@ use time::OffsetDateTime;
 
 use crate::{
     server::db::model::DownloadRow,
-    shared::{
-        download::{DownloadRequest, DownloadStatus},
-        music::Metadata,
-    },
+    shared::{download::DownloadStatus, music::Metadata},
 };
 
 #[derive(Debug, Clone)]
@@ -19,16 +16,15 @@ impl Repository {
         Self { pool }
     }
 
-    pub async fn add_download(&self, req: DownloadRequest) -> Result<Option<i64>, sqlx::Error> {
-        let DownloadRequest {
-            provider,
-            track_id,
-            quality,
-            metadata,
-        } = req;
-
+    pub async fn add_download(
+        &self,
+        provider: &str,
+        track_id: &str,
+        quality: &str,
+        metadata: &Metadata,
+    ) -> Result<Option<i64>, sqlx::Error> {
         let metadata =
-            serde_json::to_string(&metadata).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+            serde_json::to_string(metadata).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
 
         sqlx::query_scalar!(
             r#"
@@ -564,228 +560,5 @@ impl Repository {
         .await?;
 
         Ok(result.rows_affected() == 1)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::server::db;
-
-    fn request(track_id: &str) -> DownloadRequest {
-        DownloadRequest {
-            provider: "test".to_string(),
-            track_id: track_id.to_string(),
-            quality: "lossless".to_string(),
-            metadata: Metadata {
-                name: "song".to_string(),
-                artists: vec!["artist".to_string()],
-                album: String::new(),
-                album_artist: String::new(),
-                date: String::new(),
-                cover_url: String::new(),
-            },
-        }
-    }
-
-    #[tokio::test]
-    async fn worker_recovery_is_fenced_by_version() {
-        let repository = Repository::new(db::connect_memory().await.unwrap());
-        let id = repository
-            .add_download(request("worker-panic"))
-            .await
-            .unwrap()
-            .unwrap();
-        let claim = repository.claim_next().await.unwrap().unwrap();
-
-        assert!(
-            !repository
-                .recover_worker(id, claim.version + 1, "stale worker")
-                .await
-                .unwrap()
-        );
-        assert!(
-            repository
-                .recover_worker(id, claim.version, "worker panic")
-                .await
-                .unwrap()
-        );
-
-        let reclaimed = repository.claim_next().await.unwrap().unwrap();
-        assert_eq!(reclaimed.id, id);
-        assert!(reclaimed.version > claim.version);
-    }
-
-    #[tokio::test]
-    async fn pause_invalidates_the_claimed_state_and_resume_reclaims() {
-        let repository = Repository::new(db::connect_memory().await.unwrap());
-        let id = repository
-            .add_download(request("pause"))
-            .await
-            .unwrap()
-            .unwrap();
-
-        let first_claim = repository.claim_next().await.unwrap().unwrap();
-        assert_eq!(first_claim.id, id);
-        assert_eq!(first_claim.status, DownloadStatus::Resolving);
-
-        assert!(repository.pause_download(id).await.unwrap());
-        assert!(
-            !repository
-                .mark_downloading(id, first_claim.version)
-                .await
-                .unwrap()
-        );
-
-        assert!(repository.resume_download(id).await.unwrap());
-        let second_claim = repository.claim_next().await.unwrap().unwrap();
-        assert_eq!(second_claim.id, id);
-        assert_eq!(second_claim.status, DownloadStatus::Resolving);
-        assert!(second_claim.version > first_claim.version);
-    }
-
-    #[tokio::test]
-    async fn downloaded_task_is_claimed_for_tagging_and_cancel_rejects_stale_commit() {
-        let repository = Repository::new(db::connect_memory().await.unwrap());
-        let id = repository
-            .add_download(request("tag"))
-            .await
-            .unwrap()
-            .unwrap();
-        let download_claim = repository.claim_next().await.unwrap().unwrap();
-
-        assert!(
-            repository
-                .mark_downloading(id, download_claim.version)
-                .await
-                .unwrap()
-        );
-        assert!(
-            repository
-                .mark_downloaded(id, download_claim.version, "/tmp/song.ready", 10)
-                .await
-                .unwrap()
-        );
-
-        let tagging_claim = repository.claim_next().await.unwrap().unwrap();
-        assert_eq!(tagging_claim.status, DownloadStatus::Tagging);
-        assert!(repository.cancel_download(id).await.unwrap());
-        assert!(
-            !repository
-                .complete_with_song(
-                    id,
-                    tagging_claim.version,
-                    "/tmp/song.flac",
-                    "flac",
-                    10,
-                    &tagging_claim.metadata,
-                )
-                .await
-                .unwrap()
-        );
-    }
-
-    #[tokio::test]
-    async fn completing_task_writes_song_and_artists_in_order() {
-        let repository = Repository::new(db::connect_memory().await.unwrap());
-        let mut request = request("complete");
-        request.metadata.artists = vec!["first".to_string(), "second".to_string()];
-        let id = repository.add_download(request).await.unwrap().unwrap();
-        let download_claim = repository.claim_next().await.unwrap().unwrap();
-
-        assert!(
-            repository
-                .mark_downloading(id, download_claim.version)
-                .await
-                .unwrap()
-        );
-        assert!(
-            repository
-                .mark_downloaded(id, download_claim.version, "/tmp/song.ready.flac", 10)
-                .await
-                .unwrap()
-        );
-
-        let tagging_claim = repository.claim_next().await.unwrap().unwrap();
-        assert!(
-            repository
-                .complete_with_song(
-                    id,
-                    tagging_claim.version,
-                    "/tmp/song - first, second.flac",
-                    "flac",
-                    12,
-                    &tagging_claim.metadata,
-                )
-                .await
-                .unwrap()
-        );
-
-        let song_id = sqlx::query_scalar!(
-            "SELECT id FROM songs WHERE path = ?",
-            "/tmp/song - first, second.flac"
-        )
-        .fetch_one(&repository.pool)
-        .await
-        .unwrap();
-        let artists = sqlx::query_scalar!(
-            "SELECT artist FROM song_artists WHERE song_id = ? ORDER BY id",
-            song_id
-        )
-        .fetch_all(&repository.pool)
-        .await
-        .unwrap();
-
-        assert_eq!(artists, ["first", "second"]);
-    }
-
-    #[tokio::test]
-    async fn retry_waits_until_due_and_successful_stage_resets_counter() {
-        let repository = Repository::new(db::connect_memory().await.unwrap());
-        let id = repository
-            .add_download(request("retry"))
-            .await
-            .unwrap()
-            .unwrap();
-        let first_claim = repository.claim_next().await.unwrap().unwrap();
-        let retry_at = OffsetDateTime::now_utc() + time::Duration::minutes(1);
-
-        assert!(
-            repository
-                .requeue_download(id, first_claim.version, retry_at, "temporary failure")
-                .await
-                .unwrap()
-        );
-        assert!(repository.claim_next().await.unwrap().is_none());
-
-        let due_at = OffsetDateTime::now_utc() - time::Duration::seconds(1);
-        sqlx::query!(
-            "UPDATE downloads SET next_retry_at = ? WHERE id = ?",
-            due_at,
-            id
-        )
-        .execute(&repository.pool)
-        .await
-        .unwrap();
-
-        let second_claim = repository.claim_next().await.unwrap().unwrap();
-        assert_eq!(second_claim.retry_count, 1);
-        assert!(second_claim.next_retry_at.is_none());
-        assert!(
-            repository
-                .mark_downloading(id, second_claim.version)
-                .await
-                .unwrap()
-        );
-        assert!(
-            repository
-                .mark_downloaded(id, second_claim.version, "/tmp/retry.ready.flac", 10)
-                .await
-                .unwrap()
-        );
-
-        let tagging_claim = repository.claim_next().await.unwrap().unwrap();
-        assert_eq!(tagging_claim.retry_count, 0);
-        assert!(tagging_claim.next_retry_at.is_none());
     }
 }

@@ -2,7 +2,7 @@ use sqlx::types::Json;
 use time::OffsetDateTime;
 
 use crate::shared::{
-    download::{DownloadDto, DownloadStatus},
+    download::{Download, DownloadStatus},
     music::Metadata,
 };
 
@@ -32,7 +32,7 @@ pub struct DownloadRow {
     pub updated_at: OffsetDateTime,
 }
 
-impl From<DownloadRow> for DownloadDto {
+impl From<DownloadRow> for Download {
     fn from(value: DownloadRow) -> Self {
         let metadata = value.metadata.0;
 

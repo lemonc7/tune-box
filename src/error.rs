@@ -123,3 +123,19 @@ pub enum ManagerError {
     #[error("数据库操作失败: {0}")]
     Database(#[from] sqlx::Error),
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum AppError {
+    #[error("参数校验失败")]
+    Validation(#[from] garde::Report),
+    #[error("请求参数错误: {0}")]
+    BadRequest(String),
+    #[error("资源不存在")]
+    NotFound,
+    #[error("当前操作不允许: {0}")]
+    Conflict(String),
+    #[error("服务器内部错误")]
+    Service(#[from] ServiceError),
+    #[error("任务管理器错误")]
+    Manager(#[from] ManagerError),
+}

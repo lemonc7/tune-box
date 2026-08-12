@@ -1,12 +1,13 @@
+pub mod error;
+pub mod server;
+pub mod shared;
+pub mod web;
+
 use std::error::Error;
 
 use tokio::fs;
 
 use crate::server::db;
-
-pub mod error;
-pub mod server;
-pub mod shared;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
