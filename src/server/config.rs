@@ -1,29 +1,48 @@
 use std::{fs, path::Path};
 
+use garde::Validate;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
+#[serde(default)]
 pub struct Config {
+    #[garde(dive)]
     pub server: Server,
+    #[garde(dive)]
     pub providers: Providers,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct Server {
+    #[garde(range(min = 1, max = 65535))]
     pub port: u32,
+    #[garde(range(min = 1))]
+    pub http_timeout: u64,
+    #[garde(range(min = 1))]
+    pub request_timeout: u64,
+    #[garde(length(min = 16))]
     pub mcp_token: String,
+    #[garde(range(min = 1))]
     pub max_bytes: u64,
+    #[garde(range(min = 1))]
+    pub max_http_concurrent: usize,
+    #[garde(range(min = 1))]
+    pub max_download_concurrent: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct Providers {
+    #[garde(dive)]
     pub kuwo: Kuwo,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct Kuwo {
+    #[garde(url)]
     pub search_url: String,
+    #[garde(url)]
     pub resolve_url: String,
+    #[garde(url)]
     pub lyric_url: String,
 }
 
@@ -32,8 +51,12 @@ impl Default for Config {
         Self {
             server: Server {
                 port: 8080,
-                mcp_token: String::from(""),
+                http_timeout: 30,
+                request_timeout: 30,
+                mcp_token: String::from("tune_box"),
                 max_bytes: 1024 * 1024 * 100,
+                max_http_concurrent: 32,
+                max_download_concurrent: 3,
             },
             providers: Providers {
                 kuwo: Kuwo {
@@ -46,10 +69,15 @@ impl Default for Config {
     }
 }
 
-pub fn load_config(path: impl AsRef<Path>) -> Config {
+pub fn load_config(path: impl AsRef<Path>) -> Result<Config, String> {
     let Ok(content) = fs::read_to_string(path) else {
-        return Config::default();
+        return Ok(Config::default());
     };
 
-    toml::from_str(&content).unwrap_or(Config::default())
+    let config: Config = toml::from_str(&content).map_err(|e| format!("读取配置: {e}"))?;
+
+    config
+        .validate()
+        .map_err(|e| format!("配置文件无效: {e}"))?;
+    Ok(config)
 }

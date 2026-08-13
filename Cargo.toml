@@ -5,11 +5,20 @@ edition = "2024"
 
 [dependencies]
 async-trait = "0.1"
+
 futures-util = "0.3"
-reqwest = { version = "0.13", features = ["json", "stream"] }
+
+reqwest = { version = "0.13", default-features = false, features = [
+  "rustls",
+  "json",
+  "stream",
+] }
+
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+toml = "1"
+
 tokio = { version = "1", features = [
   "rt-multi-thread",
   "macros",
@@ -20,20 +29,47 @@ tokio = { version = "1", features = [
   "signal",
 ] }
 tokio-util = { version = "0.7", features = ["rt"] }
-toml = "1"
+
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
 lofty = "0.25"
-time = { version = "0.3", features = ["serde"] }
+
+time = "0.3"
+
 sqlx = { version = "0.9", default-features = false, features = [
   "runtime-tokio",
-  "sqlite",
+  "sqlite-bundled",
   "macros",
   "migrate",
-  "derive",
   "time",
   "json",
 ] }
-axum = "0.8"
-garde = { version = "0.23", features = ["derive"] }
-askama = "0.16"
+axum = { version = "0.8", default-features = false, features = [
+  "tokio",
+  "http1",
+  "query",
+  "tracing",
+] }
+axum-extra = { version = "0.12", default-features = false, features = ["form"] }
+
+garde = { version = "0.23", features = ["derive", "url"] }
+
+askama = { version = "0.16", default-features = false, features = [
+  "derive",
+  "std",
+  "config",
+] }
+
 url = "2"
+rust-embed = "8"
+mime_guess = "2"
+
+tower = { version = "0.5", features = ["limit"] }
+tower-http = { version = "0.7", features = [
+  "trace",
+  "request-id",
+  "timeout",
+  "limit",
+  "compression-gzip",
+] }

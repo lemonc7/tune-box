@@ -5,7 +5,8 @@ use std::{
     time::Duration,
 };
 
-use ::time::{Duration as TimeDuration, OffsetDateTime};
+use ::time::Duration as TimeDuration;
+use sqlx::types::time::OffsetDateTime;
 use tokio::{fs, sync::watch, time};
 use tokio_util::sync::CancellationToken;
 
@@ -90,6 +91,16 @@ impl Service {
             .get(name)
             .map(|p| p.as_ref())
             .ok_or(ServiceError::InvalidProvider)
+    }
+
+    pub fn providers(&self) -> Vec<String> {
+        let mut providers = self
+            .providers
+            .values()
+            .map(|provider| provider.id().to_owned())
+            .collect::<Vec<_>>();
+        providers.sort_unstable();
+        providers
     }
 
     // task必须由claim_next原子领取

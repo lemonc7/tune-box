@@ -31,13 +31,13 @@ where
 }
 
 #[derive(Template)]
-#[template(path = "fragments/error.html")]
+#[template(path = "components/error.html")]
 pub struct ErrorTemplate {
     pub message: String,
 }
 
 #[derive(Template)]
-#[template(path = "fragments/notice.html")]
+#[template(path = "components/notice.html")]
 pub struct NoticeTemplate {
     pub message: String,
 }
@@ -49,7 +49,7 @@ pub struct SearchPageTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "fragments/search_results.html")]
+#[template(path = "components/search_results.html")]
 pub struct SearchResultsTemplate {
     pub result: SearchResult,
     pub lossless: bool,
@@ -57,7 +57,7 @@ pub struct SearchResultsTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "fragments/track_list.html")]
+#[template(path = "components/track_list.html")]
 pub struct TrackListTemplate {
     pub result: SearchResult,
     pub lossless: bool,

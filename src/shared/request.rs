@@ -13,6 +13,7 @@ pub struct SearchRequest {
     #[garde(range(min = 1, max = 100))]
     pub limit: i64,
     #[garde(skip)]
+    #[serde(default)]
     pub lossless: bool,
 }
 
@@ -27,13 +28,16 @@ pub struct CreateDownloadRequest {
     #[garde(length(min = 1))]
     pub name: String,
     #[garde(length(min = 1), inner(length(min = 1)))]
+    #[serde(default)]
     pub artists: Vec<String>,
     #[garde(length(min = 1))]
     pub album: String,
-    #[garde(length(min = 1))]
+    #[garde(skip)]
+    #[serde(default)]
     pub album_artist: String,
     #[garde(length(min = 1))]
     pub date: String,
-    #[garde(length(min = 1))]
+    #[garde(skip)]
+    #[serde(default)]
     pub cover_url: String,
 }

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     extract::State,
     http::{HeaderMap, HeaderName, HeaderValue},
@@ -14,7 +12,10 @@ use crate::{
     },
     web::{
         extractor::{ValidateForm, ValidateQuery},
-        pages::{HtmlTemplate, NoticeTemplate, SearchResultsTemplate, TrackListTemplate},
+        pages::{
+            HtmlTemplate, NoticeTemplate, SearchPageTemplate, SearchResultsTemplate,
+            TrackListTemplate,
+        },
         state::AppState,
     },
 };
@@ -23,8 +24,14 @@ pub async fn health_check() -> &'static str {
     "Welcome to Tune-Box"
 }
 
+pub async fn home(State(s): State<AppState>) -> HtmlTemplate<SearchPageTemplate> {
+    HtmlTemplate(SearchPageTemplate {
+        providers: s.service.providers(),
+    })
+}
+
 pub async fn search(
-    State(s): State<Arc<AppState>>,
+    State(s): State<AppState>,
     headers: HeaderMap,
     ValidateQuery(req): ValidateQuery<SearchRequest>,
 ) -> Result<Response, AppError> {
@@ -55,7 +62,7 @@ pub async fn search(
 }
 
 pub async fn create_download(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     ValidateForm(req): ValidateForm<CreateDownloadRequest>,
 ) -> Result<Response, AppError> {
     let artists = req
@@ -102,9 +109,6 @@ pub async fn create_download(
 
     Ok(response)
 }
-
-
-
 
 fn next_search_url(result: &SearchResult, lossless: bool) -> Option<String> {
     let loaded = result.page * result.limit;

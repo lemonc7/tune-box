@@ -1,3 +1,4 @@
+use axum::http;
 use futures_util::StreamExt;
 use reqwest::{
     Url,
@@ -115,7 +116,7 @@ impl Downloader {
         };
         let status = resp.status();
 
-        if status != reqwest::StatusCode::OK && status != reqwest::StatusCode::PARTIAL_CONTENT {
+        if status != http::StatusCode::OK && status != http::StatusCode::PARTIAL_CONTENT {
             return Err(DownloadError::Http(status));
         }
 
@@ -132,7 +133,7 @@ impl Downloader {
         }
 
         // 如果服务器不支持端点续传(206)，从头开始下载
-        if downloaded > 0 && status == reqwest::StatusCode::OK {
+        if downloaded > 0 && status == http::StatusCode::OK {
             file.set_len(0).await?;
             file.seek(SeekFrom::Start(0)).await?;
             downloaded = 0;
@@ -140,7 +141,7 @@ impl Downloader {
 
         // 计算总大小
         let mut total = resp.content_length();
-        if status == reqwest::StatusCode::PARTIAL_CONTENT {
+        if status == http::StatusCode::PARTIAL_CONTENT {
             let value = resp
                 .headers()
                 .get("content-range")

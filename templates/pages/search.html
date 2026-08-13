@@ -1,0 +1,77 @@
+{% extends "layout/base.html" %} {% block title %}搜索音乐 - Tune Box{% endblock
+%} {% block content %}
+
+<section
+  class="mb-6 overflow-hidden rounded-2xl border border-indigo-100 bg-linear-to-br from-indigo-50/90 via-white to-white p-6 shadow-sm"
+>
+  <header class="mb-5">
+    <p
+      class="mb-1 text-[0.65rem] font-extrabold uppercase tracking-[0.15em] text-indigo-600"
+    >
+      Tune Box Search
+    </p>
+    <h1 class="mb-1 text-2xl font-bold">搜索想听的音乐</h1>
+    <p class="text-sm text-slate-500">选择音乐源，按歌曲、歌手或专辑搜索。</p>
+  </header>
+  <form
+    class="space-y-4"
+    hx-get="/search"
+    hx-target="#search-results"
+    hx-swap="innerHTML"
+    hx-indicator="#search-loading"
+  >
+    <div
+      class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(10rem,0.3fr)_minmax(16rem,1fr)]"
+    >
+      <label class="grid gap-1.5 text-xs font-semibold text-slate-600">
+        音乐源
+        <select
+          name="provider"
+          required
+          class="rounded-lg border border-slate-200 px-3 py-2.5"
+        >
+          {% for provider in providers %}
+          <option value="{{provider}}">{{provider}}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="grid gap-1.5 text-xs font-semibold text-slate-600">
+        关键词
+        <input
+          type="search"
+          name="q"
+          required
+          placeholder="歌曲、歌手或专辑"
+          class="rounded-lg border border-slate-200 px-3 py-2.5"
+        />
+      </label>
+    </div>
+    <label class="inline-flex items-center gap-2">
+      <input type="checkbox" name="lossless" value="true" />
+      <span>仅显示无损</span>
+    </label>
+
+    <input type="hidden" name="page" value="1" />
+    <input type="hidden" name="limit" value="20" />
+
+    <button
+      type="submit"
+      class="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white"
+    >
+      搜索音乐
+    </button>
+    <span id="search-loading" class="htmx-indicator text-sm text-indigo-600">
+      搜索中...
+    </span>
+  </form>
+</section>
+
+<section
+  id="search-results"
+  aria-live="polite"
+  class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm"
+>
+  {% include "components/empty.html" %}
+</section>
+
+{% endblock %}

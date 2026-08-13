@@ -1,0 +1,13 @@
+[server]
+port = 8080
+http_timeout = 30
+request_timeout = 30
+mcp_token = "mcp_token"
+max_bytes = 104857600
+max_http_concurrent = 32
+max_download_concurrent = 3
+
+[providers.kuwo]
+search_url = "https://search.kuwo.cn/r.s"
+resolve_url = "https://mobi.kuwo.cn/mobi.s"
+lyric_url = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"

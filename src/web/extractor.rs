@@ -1,10 +1,10 @@
 use askama::Template;
 use axum::{
-    Form,
     extract::{FromRequest, FromRequestParts, Query},
     http::{HeaderName, HeaderValue, StatusCode},
     response::{Html, IntoResponse},
 };
+use axum_extra::extract::Form;
 use serde::de::DeserializeOwned;
 
 use crate::{
@@ -108,5 +108,34 @@ impl IntoResponse for AppError {
             HeaderValue::from_static("innerHTML"),
         );
         resp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::Body,
+        extract::FromRequest,
+        http::{Request, header::CONTENT_TYPE},
+    };
+    use axum_extra::extract::Form;
+
+    use crate::shared::request::CreateDownloadRequest;
+
+    #[tokio::test]
+    async fn form_collects_repeated_artist_fields() {
+        let request = Request::builder()
+            .method("POST")
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(
+                "provider=kuwo&track_id=1&quality=flac&name=Song&artists=Alice&artists=Bob&album=Album&album_artist=Alice&date=2026&cover_url=https%3A%2F%2Fexample.com%2Fcover.jpg",
+            ))
+            .unwrap();
+
+        let Form(value) = Form::<CreateDownloadRequest>::from_request(request, &())
+            .await
+            .unwrap();
+
+        assert_eq!(value.artists, ["Alice", "Bob"]);
     }
 }

@@ -1,5 +1,4 @@
-use sqlx::types::Json;
-use time::OffsetDateTime;
+use sqlx::types::{Json, time::OffsetDateTime};
 
 use crate::shared::{
     download::{Download, DownloadStatus},

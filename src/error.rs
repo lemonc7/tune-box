@@ -1,3 +1,6 @@
+use std::io;
+
+use axum::http;
 use thiserror::Error;
 
 use crate::shared::download::DownloadStatus;
@@ -41,7 +44,7 @@ pub enum DownloadError {
     #[error("下载文件大小不匹配，期望 {expected} 字节，实际 {actual} 字节")]
     SizeMismatch { expected: u64, actual: u64 },
     #[error("http状态错误: {0}")]
-    Http(reqwest::StatusCode),
+    Http(http::StatusCode),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -51,7 +54,7 @@ pub enum TagError {
     #[error("http请求失败: {0}")]
     Http(#[from] reqwest::Error),
     #[error("请求封面图响应错误: {0}")]
-    HttpStatus(reqwest::StatusCode),
+    HttpStatus(http::StatusCode),
     #[error("封面图为空或超过大小限制")]
     CoverSizeInvalid,
     #[error("不支持的封面图格式")]
@@ -74,6 +77,8 @@ pub enum DatabaseError {
     Sqlx(#[from] sqlx::Error),
     #[error("数据库迁移错误: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
+    #[error("创建父目录错误: {0}")]
+    CreateParent(#[from] io::Error),
 }
 
 #[derive(Debug, thiserror::Error)]

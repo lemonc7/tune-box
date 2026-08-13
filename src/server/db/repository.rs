@@ -1,5 +1,4 @@
-use sqlx::{SqlitePool, types::Json};
-use time::OffsetDateTime;
+use sqlx::{SqlitePool, types::{Json, time::OffsetDateTime}};
 
 use crate::{
     server::db::model::DownloadRow,

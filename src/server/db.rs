@@ -1,10 +1,11 @@
-use std::{str::FromStr, time::Duration};
+use std::{path::Path, str::FromStr, time::Duration};
 
 use sqlx::{
     SqlitePool,
     migrate::Migrator,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
+use tokio::fs;
 
 use crate::error::DatabaseError;
 
@@ -14,6 +15,12 @@ pub mod repository;
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 pub async fn connect(db_url: &str) -> Result<SqlitePool, DatabaseError> {
+    if let Some(path) = db_url.strip_prefix("sqlite://")
+        && let Some(parent) = Path::new(path).parent()
+    {
+        fs::create_dir_all(parent).await?;
+    }
+
     let options = SqliteConnectOptions::from_str(db_url)?
         .create_if_missing(true)
         .foreign_keys(true)

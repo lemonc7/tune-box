@@ -1,4 +1,4 @@
-{# templates/fragments/search_results.html #} {% if result.tracks.is_empty() %}
+{# templates/components/search_results.html #} {% if result.tracks.is_empty() %}
 <div
   class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-8 py-12 text-center text-sm text-slate-400"
 >
@@ -17,4 +17,4 @@
   </span>
 </div>
 
-{% include "fragments/track_list.html" %} {% endif %}
+{% include "components/track_list.html" %} {% endif %}

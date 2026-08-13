@@ -148,9 +148,6 @@ impl Provider for KuwoProvider {
     fn id(&self) -> &'static str {
         "kuwo"
     }
-    fn name(&self) -> &'static str {
-        "酷我"
-    }
     async fn search(
         &self,
         query: &str,

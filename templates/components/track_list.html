@@ -42,20 +42,20 @@
         hx-disabled-elt="find button"
       >
         <input type="hidden" name="provider" value="{{ track.provider }}" />
-        <input type="hidden" name="trackId" value="{{ track.id }}" />
+        <input type="hidden" name="track_id" value="{{ track.id }}" />
         <input type="hidden" name="quality" value="{{ quality.id }}" />
         <input type="hidden" name="name" value="{{ track.name }}" />
-        <textarea hidden name="artists">
-{{ track.artists|join("\n") }}</textarea
-        >
+        {% for artist in track.artists %}
+        <input type="hidden" name="artists" value="{{ artist }}" />
+        {% endfor %}
         <input type="hidden" name="album" value="{{ track.album }}" />
         <input
           type="hidden"
-          name="albumArtist"
+          name="album_artist"
           value="{{ track.album_artist }}"
         />
         <input type="hidden" name="date" value="{{ track.date }}" />
-        <input type="hidden" name="coverUrl" value="{{ track.cover_url }}" />
+        <input type="hidden" name="cover_url" value="{{ track.cover_url }}" />
 
         <button
           type="submit"

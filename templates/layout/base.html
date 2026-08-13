@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Tune Box{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
+    <link rel="stylesheet" href="/assets/css/app.css" />
+    <script src="/assets/js/htmx.min.js" defer></script>
+    {% block head %}{% endblock %}
+  </head>
+
+  <body class="min-h-screen bg-slate-50 text-slate-800 antialiased">
+    <header
+      class="sticky top-0 z-10 border-b border-slate-200/60 bg-white/80 backdrop-blur-md"
+    >
+      <nav class="mx-auto flex max-w-5xl gap-1 px-5 py-3" aria-label="主导航">
+        <a href="/" class="nav-link">搜索</a>
+        <a href="/downloads" class="nav-link">下载历史</a>
+        <a href="/library" class="nav-link">本地曲库</a>
+      </nav>
+    </header>
+    <div
+      id="app-error"
+      class="mx-auto max-w-5xl px-4 pt-4"
+      aria-live="assertive"
+    ></div>
+    <main id="app-content" class="mx-auto max-w-5xl space-y-5 px-4 py-6 pb-28">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>
