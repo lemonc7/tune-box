@@ -1,4 +1,7 @@
-use sqlx::{SqlitePool, types::{Json, time::OffsetDateTime}};
+use sqlx::{
+    SqlitePool,
+    types::{Json, time::OffsetDateTime},
+};
 
 use crate::{
     server::db::model::DownloadRow,
@@ -47,10 +50,10 @@ impl Repository {
         .await
     }
 
-    pub async fn list_downloads(
+    pub async fn list_downloads_before(
         &self,
+        before_id: i64,
         limit: i64,
-        offset: i64,
     ) -> Result<Vec<DownloadRow>, sqlx::Error> {
         sqlx::query_as!(
             DownloadRow,
@@ -73,13 +76,44 @@ impl Repository {
                 finished_at,
                 updated_at
             FROM downloads
+            WHERE id < ?
             ORDER BY id DESC
-            LIMIT ? OFFSET ?
+            LIMIT ?
             "#,
+            before_id,
             limit,
-            offset
         )
         .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn get_download(&self, id: i64) -> Result<Option<DownloadRow>, sqlx::Error> {
+        sqlx::query_as!(
+            DownloadRow,
+            r#"
+            SELECT
+                id,
+                provider,
+                track_id,
+                quality,
+                metadata AS "metadata!: Json<Metadata>",
+                status AS "status!: DownloadStatus",
+                downloaded_bytes,
+                total_bytes,
+                version,
+                retry_count,
+                next_retry_at,
+                path,
+                error_message,
+                created_at,
+                finished_at,
+                updated_at
+            FROM downloads
+            WHERE id = ?
+            "#,
+            id,
+        )
+        .fetch_optional(&self.pool)
         .await
     }
 
@@ -559,5 +593,42 @@ impl Repository {
         .await?;
 
         Ok(result.rows_affected() == 1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{server::db, shared::music::Metadata};
+
+    use super::Repository;
+
+    #[tokio::test]
+    async fn download_cursor_loads_older_rows_without_duplicates() {
+        let pool = db::connect_memory().await.unwrap();
+        let repository = Repository::new(pool);
+        let metadata = Metadata {
+            name: "song".to_owned(),
+            artists: vec!["artist".to_owned()],
+            album: String::new(),
+            album_artist: String::new(),
+            date: String::new(),
+            cover_url: String::new(),
+        };
+
+        for track_id in ["1", "2", "3"] {
+            repository
+                .add_download("kuwo", track_id, "flac", &metadata)
+                .await
+                .unwrap();
+        }
+
+        let first = repository.list_downloads_before(i64::MAX, 2).await.unwrap();
+        assert_eq!(first.iter().map(|row| row.id).collect::<Vec<_>>(), [3, 2]);
+
+        let second = repository
+            .list_downloads_before(first.last().unwrap().id, 2)
+            .await
+            .unwrap();
+        assert_eq!(second.iter().map(|row| row.id).collect::<Vec<_>>(), [1]);
     }
 }

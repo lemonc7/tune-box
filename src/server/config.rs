@@ -1,10 +1,9 @@
-use std::{fs, path::Path};
+use std::{fs, io, path::Path};
 
 use garde::Validate;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Validate)]
-#[serde(default)]
 pub struct Config {
     #[garde(dive)]
     pub server: Server,
@@ -20,7 +19,7 @@ pub struct Server {
     pub http_timeout: u64,
     #[garde(range(min = 1))]
     pub request_timeout: u64,
-    #[garde(length(min = 16))]
+    #[garde(length(min = 6))]
     pub mcp_token: String,
     #[garde(range(min = 1))]
     pub max_bytes: u64,
@@ -70,14 +69,16 @@ impl Default for Config {
 }
 
 pub fn load_config(path: impl AsRef<Path>) -> Result<Config, String> {
-    let Ok(content) = fs::read_to_string(path) else {
-        return Ok(Config::default());
+    let config = match fs::read_to_string(path) {
+        Ok(content) => {
+            toml::from_str(&content).map_err(|error| format!("读取配置失败：{error}"))?
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Config::default(),
+        Err(error) => return Err(format!("读取配置文件失败：{error}")),
     };
-
-    let config: Config = toml::from_str(&content).map_err(|e| format!("读取配置: {e}"))?;
 
     config
         .validate()
-        .map_err(|e| format!("配置文件无效: {e}"))?;
+        .map_err(|error| format!("配置文件无效: {error}"))?;
     Ok(config)
 }

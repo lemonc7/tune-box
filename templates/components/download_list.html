@@ -1,0 +1,32 @@
+{% for download in page.downloads %}
+<article
+  id="download-{{ download.id }}"
+  class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+>
+  {% include "components/download_card.html" %}
+
+  {# HTMX 官方无限滚动模式：最后一项进入视口后，将下一页追加到它后面。 #}
+  {% if loop.last %}
+    {% match page.next_before_id %}
+      {% when Some with (before_id) %}
+      <div
+        hx-get="/downloads/more?before_id={{ before_id }}&limit=20"
+        hx-trigger="revealed"
+        hx-target="closest article"
+        hx-swap="afterend"
+        hx-indicator="find .downloads-more-indicator"
+        class="h-px"
+        aria-label="加载更多下载任务"
+      >
+        <span
+          class="downloads-more-indicator htmx-indicator mt-5 block text-center text-sm text-indigo-500"
+        >
+          正在加载更多……
+        </span>
+      </div>
+      {% when None %}
+      <p class="pt-4 text-center text-xs text-slate-400">已经到底了</p>
+    {% endmatch %}
+  {% endif %}
+</article>
+{% endfor %}

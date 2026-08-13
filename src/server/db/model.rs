@@ -37,6 +37,8 @@ impl From<DownloadRow> for Download {
 
         Self {
             id: value.id,
+            provider: value.provider,
+            quality: value.quality,
             name: metadata.name,
             artists: metadata.artists,
             album: metadata.album,

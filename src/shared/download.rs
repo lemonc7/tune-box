@@ -30,6 +30,9 @@ pub enum DownloadStatus {
 pub struct Download {
     pub id: i64,
 
+    pub provider: String,
+    pub quality: String,
+
     pub name: String,
     pub artists: Vec<String>,
     pub album: String,
@@ -39,4 +42,10 @@ pub struct Download {
     pub downloaded_bytes: i64,
     pub total_bytes: Option<i64>,
     pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DownloadPage {
+    pub downloads: Vec<Download>,
+    pub next_before_id: Option<i64>,
 }

@@ -36,7 +36,10 @@ use crate::{
     },
     web::{
         assets::assets,
-        handler::{create_download, health_check, home, search},
+        handler::{
+            cancel_download, create_download, download_card, downloads, health_check, home,
+            more_downloads, pause_download, resume_download, search,
+        },
         state::AppState,
     },
 };
@@ -184,7 +187,12 @@ fn build_router(config: &Server, state: AppState) -> Router {
     let dynamic_routes = Router::new()
         .route("/", get(home))
         .route("/search", get(search))
-        .route("/downloads", post(create_download))
+        .route("/downloads", get(downloads).post(create_download))
+        .route("/downloads/more", get(more_downloads))
+        .route("/downloads/{id}/card", get(download_card))
+        .route("/downloads/{id}/pause", post(pause_download))
+        .route("/downloads/{id}/resume", post(resume_download))
+        .route("/downloads/{id}/cancel", post(cancel_download))
         .layer(
             ServiceBuilder::new()
                 // 请求体最大64KB

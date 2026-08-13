@@ -73,3 +73,8 @@ tower-http = { version = "0.7", features = [
   "limit",
   "compression-gzip",
 ] }
+
+rmcp = { version = "3", features = [
+  "server",
+  "transport-streamable-http-server",
+] }

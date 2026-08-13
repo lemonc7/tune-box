@@ -1,0 +1,92 @@
+<div
+  id="download-card-{{ download.id }}"
+  {% if download.polling %}
+  hx-get="/downloads/{{ download.id }}/card"
+  hx-trigger="every 2s"
+  hx-target="this"
+  hx-swap="outerHTML"
+  {% endif %}
+>
+  <div class="flex items-start gap-4">
+    <div class="min-w-0 flex-1">
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="truncate font-bold text-slate-800">{{ download.name }}</h2>
+        <span
+          class="rounded-full px-2 py-0.5 text-xs font-semibold {{ download.status_class }}"
+        >
+          {{ download.status_label }}
+        </span>
+      </div>
+
+      <p class="mt-1 truncate text-sm text-slate-500">{{ download.artists }}</p>
+      <p class="mt-1 truncate text-xs text-slate-400">{{ download.details }}</p>
+    </div>
+
+    {% if download.has_actions %}
+    <details name="download-actions" class="relative shrink-0">
+      <summary
+        class="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-200 text-lg text-slate-500 hover:bg-slate-50"
+        aria-label="任务操作"
+      >
+        ⋮
+      </summary>
+
+      <div class="action-menu">
+        {% if download.can_pause %}
+        <button
+          type="button"
+          hx-post="/downloads/{{ download.id }}/pause"
+          hx-target="#download-card-{{ download.id }}"
+          hx-swap="outerHTML"
+          hx-disabled-elt="this"
+          class="action-menu-item"
+        >
+          暂停
+        </button>
+        {% endif %} {% if download.can_resume %}
+        <button
+          type="button"
+          hx-post="/downloads/{{ download.id }}/resume"
+          hx-target="#download-card-{{ download.id }}"
+          hx-swap="outerHTML"
+          hx-disabled-elt="this"
+          class="action-menu-item"
+        >
+          继续
+        </button>
+        {% endif %} {% if download.can_cancel %}
+        <button
+          type="button"
+          hx-post="/downloads/{{ download.id }}/cancel"
+          hx-target="#download-card-{{ download.id }}"
+          hx-swap="outerHTML"
+          hx-disabled-elt="this"
+          hx-confirm="确定取消这个下载任务吗？"
+          class="action-menu-danger"
+        >
+          取消
+        </button>
+        {% endif %}
+      </div>
+    </details>
+    {% endif %}
+  </div>
+
+  <div class="mt-4">
+    <progress
+      class="block h-1.5 w-full overflow-hidden rounded-full accent-indigo-500"
+      value="{{ download.progress_percent }}"
+      max="100"
+      aria-label="下载进度 {{ download.progress_percent }}%"
+    ></progress>
+
+    <div class="mt-1.5 flex justify-between text-xs text-slate-400">
+      <span>{{ download.downloaded_text }}</span>
+      <span>{{ download.progress_text }}</span>
+    </div>
+  </div>
+
+  {% if download.has_error %}
+  <p class="mt-3 text-sm text-red-600">{{ download.error_message }}</p>
+  {% endif %}
+</div>

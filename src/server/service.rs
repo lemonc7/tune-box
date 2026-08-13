@@ -20,7 +20,7 @@ use crate::{
         tag::Embedder,
     },
     shared::{
-        download::DownloadStatus,
+        download::{Download, DownloadPage, DownloadStatus},
         music::{Metadata, SearchResult},
         request::{CreateDownloadRequest, SearchRequest},
     },
@@ -63,7 +63,7 @@ impl Service {
         Ok(result)
     }
 
-    pub async fn add_download(
+    pub async fn create_download(
         &self,
         req: CreateDownloadRequest,
     ) -> Result<Option<i64>, ServiceError> {
@@ -84,6 +84,40 @@ impl Service {
             )
             .await?;
         Ok(id)
+    }
+
+    pub async fn list_downloads(
+        &self,
+        before_id: Option<i64>,
+        limit: i64,
+    ) -> Result<DownloadPage, ServiceError> {
+        let limit = limit.clamp(1, 100);
+        let fetch_limit = limit.saturating_add(1);
+        let cursor = before_id.unwrap_or(i64::MAX);
+        let mut rows = self
+            .repository
+            .list_downloads_before(cursor, fetch_limit)
+            .await?;
+
+        let has_more = rows.len() > limit as usize;
+        if has_more {
+            rows.truncate(limit as usize);
+        }
+
+        let next_before_id = if has_more {
+            rows.last().map(|row| row.id)
+        } else {
+            None
+        };
+
+        Ok(DownloadPage {
+            downloads: rows.into_iter().map(Into::into).collect(),
+            next_before_id,
+        })
+    }
+
+    pub async fn get_download(&self, id: i64) -> Result<Option<Download>, ServiceError> {
+        Ok(self.repository.get_download(id).await?.map(Into::into))
     }
 
     fn provider(&self, name: &str) -> Result<&dyn Provider, ServiceError> {

@@ -41,3 +41,11 @@ pub struct CreateDownloadRequest {
     #[serde(default)]
     pub cover_url: String,
 }
+
+#[derive(Debug, Clone, Deserialize, Validate)]
+pub struct DownloadPageRequest {
+    #[garde(range(min = 1))]
+    pub before_id: i64,
+    #[garde(range(min = 1, max = 100))]
+    pub limit: i64,
+}
