@@ -1,14 +1,5 @@
-use serde::{Deserialize, Serialize};
-
 use super::music::Metadata;
-
-#[derive(Debug, Clone, Serialize)]
-pub struct DownloadRequest {
-    pub provider: String,
-    pub track_id: String,
-    pub quality: String,
-    pub metadata: Metadata,
-}
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -26,21 +17,24 @@ pub enum DownloadStatus {
     Cancelled,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Download {
     pub id: i64,
 
     pub provider: String,
+    pub track_id: String,
     pub quality: String,
 
-    pub name: String,
-    pub artists: Vec<String>,
-    pub album: String,
-    pub date: String,
-
+    pub metadata: Metadata,
     pub status: DownloadStatus,
+
     pub downloaded_bytes: i64,
     pub total_bytes: Option<i64>,
+
+    pub version: i64,
+    pub retry_count: i64,
+
+    pub path: Option<String>,
     pub error_message: Option<String>,
 }
 

@@ -1,20 +1,25 @@
 use axum::{
+    body::Body,
     extract::{Path, State},
-    http::{HeaderMap, HeaderName, HeaderValue},
-    response::{IntoResponse, Response},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
+    response::{Html, IntoResponse, Response},
 };
 
 use crate::{
     error::AppError,
     shared::{
         music::SearchResult,
-        request::{CreateDownloadRequest, DownloadPageRequest, SearchRequest},
+        request::{
+            CreateDownloadRequest, DownloadPageRequest, LibraryPageRequest, PreviewRequest,
+            SearchRequest,
+        },
     },
     web::{
         extractor::{ValidateForm, ValidateQuery},
         pages::{
             DownloadCardTemplate, DownloadListTemplate, DownloadsPageTemplate, HtmlTemplate,
-            NoticeTemplate, SearchPageTemplate, SearchResultsTemplate, TrackListTemplate,
+            LibraryPageTemplate, LibraryRowsTemplate, NoticeTemplate, SearchPageTemplate,
+            SearchResultsTemplate, SongPageView, TrackListTemplate,
         },
         state::AppState,
     },
@@ -37,30 +42,56 @@ pub async fn search(
     headers: HeaderMap,
     ValidateQuery(req): ValidateQuery<SearchRequest>,
 ) -> Result<Response, AppError> {
-    let lossless = req.lossless;
     let result = s.service.search(req).await?;
 
-    let next_url = next_search_url(&result, lossless);
+    let next_url = next_search_url(&result);
     let load_more = headers
         .get("HX-Trigger")
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value.starts_with("search-more-"));
 
     if load_more {
-        return Ok(HtmlTemplate(TrackListTemplate {
-            result,
-            lossless,
-            next_url,
-        })
-        .into_response());
+        return Ok(HtmlTemplate(TrackListTemplate { result, next_url }).into_response());
     }
 
-    Ok(HtmlTemplate(SearchResultsTemplate {
-        result,
-        lossless,
-        next_url,
-    })
-    .into_response())
+    Ok(HtmlTemplate(SearchResultsTemplate { result, next_url }).into_response())
+}
+
+pub async fn stream_preview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ValidateQuery(req): ValidateQuery<PreviewRequest>,
+) -> Result<Response, AppError> {
+    let range = headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok());
+    let upstream = state
+        .service
+        .preview(&req.provider, &req.track_id, range)
+        .await?;
+    let status = upstream.status();
+    if status != StatusCode::OK && status != StatusCode::PARTIAL_CONTENT {
+        tracing::warn!(%status, "试听资源服务器返回错误状态");
+        return Ok((StatusCode::BAD_GATEWAY, "试听资源暂时不可用").into_response());
+    }
+
+    let upstream_headers = upstream.headers().clone();
+    let mut response = Response::new(Body::from_stream(upstream.bytes_stream()));
+    *response.status_mut() = status;
+    for name in [
+        header::CONTENT_TYPE,
+        header::CONTENT_LENGTH,
+        header::CONTENT_RANGE,
+        header::ACCEPT_RANGES,
+        header::ETAG,
+        header::LAST_MODIFIED,
+        header::CACHE_CONTROL,
+    ] {
+        if let Some(value) = upstream_headers.get(&name) {
+            response.headers_mut().insert(name, value.clone());
+        }
+    }
+    Ok(response)
 }
 
 pub async fn create_download(
@@ -172,6 +203,84 @@ pub async fn cancel_download(
     render_download_card(&state, id).await
 }
 
+pub async fn retry_download(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<HtmlTemplate<DownloadCardTemplate>, AppError> {
+    if !state.manager.retry(id).await? {
+        return Err(AppError::Conflict("当前任务不能重试".to_owned()));
+    }
+    state.manager.wake().await?;
+    render_download_card(&state, id).await
+}
+
+pub async fn delete_download(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Html<&'static str>, AppError> {
+    if !state.service.delete_download(id).await? {
+        return Err(AppError::Conflict("当前任务不能删除".to_owned()));
+    }
+    Ok(Html(""))
+}
+
+pub async fn library(
+    State(s): State<AppState>,
+    ValidateQuery(req): ValidateQuery<LibraryPageRequest>,
+) -> Result<HtmlTemplate<LibraryPageTemplate>, AppError> {
+    let query = req.query.trim().to_owned();
+    let page = s
+        .service
+        .list_songs(&query, req.before_id, req.limit)
+        .await?;
+    let count = s.service.count_songs().await?;
+    Ok(HtmlTemplate(LibraryPageTemplate {
+        page: SongPageView::new(page, &query, req.limit),
+        query,
+        count,
+    }))
+}
+
+pub async fn library_items(
+    State(s): State<AppState>,
+    ValidateQuery(req): ValidateQuery<LibraryPageRequest>,
+) -> Result<HtmlTemplate<LibraryRowsTemplate>, AppError> {
+    let query = req.query.trim().to_owned();
+    let page = s
+        .service
+        .list_songs(&query, req.before_id, req.limit)
+        .await?;
+
+    Ok(HtmlTemplate(LibraryRowsTemplate {
+        page: SongPageView::new(page, &query, req.limit),
+    }))
+}
+
+pub async fn sync_library(State(state): State<AppState>) -> Result<Response, AppError> {
+    let count = state.service.sync_library().await?;
+    let mut response = Html(format!("已同步 {count} 首歌曲")).into_response();
+    response.headers_mut().insert(
+        HeaderName::from_static("hx-trigger"),
+        HeaderValue::from_static("librarySyncDone"),
+    );
+    Ok(response)
+}
+
+pub async fn delete_song(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    if !state.service.delete_song(id).await? {
+        return Err(AppError::NotFound);
+    }
+    let mut response = Html("").into_response();
+    response.headers_mut().insert(
+        HeaderName::from_static("hx-trigger"),
+        HeaderValue::from_static("downloadsChanged"),
+    );
+    Ok(response)
+}
+
 async fn render_download_card(
     state: &AppState,
     id: i64,
@@ -187,7 +296,7 @@ async fn render_download_card(
     }))
 }
 
-fn next_search_url(result: &SearchResult, lossless: bool) -> Option<String> {
+fn next_search_url(result: &SearchResult) -> Option<String> {
     let loaded = result.page * result.limit;
     if loaded >= result.total as i64 {
         return None;
@@ -198,7 +307,6 @@ fn next_search_url(result: &SearchResult, lossless: bool) -> Option<String> {
         .append_pair("q", &result.query)
         .append_pair("page", &(result.page + 1).to_string())
         .append_pair("limit", &result.limit.to_string())
-        .append_pair("lossless", if lossless { "true" } else { "false" })
         .finish();
     Some(format!("/search?{query}"))
 }

@@ -1,70 +1,59 @@
-{% extends "layout/base.html" %}
+{% extends "layout/base.html" %} {% block title %}搜索音乐 - Tune Box{% endblock
+%} {% block content %}
 
-{% block title %}搜索音乐 - Tune Box{% endblock %}
-
-{% block content %}
-
-<section
-  class="mb-6 overflow-hidden rounded-2xl border border-indigo-100 bg-linear-to-br from-indigo-50/90 via-white to-white p-6 shadow-sm"
->
-  <header class="mb-5">
-    <p
-      class="mb-1 text-[0.65rem] font-extrabold uppercase tracking-[0.15em] text-indigo-600"
-    >
-      Tune Box Search
-    </p>
-    <h1 class="mb-1 text-2xl font-bold">搜索想听的音乐</h1>
-    <p class="text-sm text-slate-500">选择音乐源，按歌曲、歌手或专辑搜索。</p>
+<div class="space-y-6">
+<section class="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight">搜索音乐</h1>
+    <p class="mt-1 text-sm text-zinc-500">按歌曲、歌手或专辑搜索并添加下载任务。</p>
   </header>
   <form
-    class="space-y-4"
+    class="space-y-5"
     hx-get="/search"
     hx-target="#search-results"
     hx-swap="innerHTML"
     hx-indicator="#search-loading"
   >
     <div
-      class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(10rem,0.3fr)_minmax(16rem,1fr)]"
+      class="grid grid-cols-1 gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]"
     >
-      <label class="grid gap-1.5 text-xs font-semibold text-slate-600">
+      <label class="grid gap-2 text-sm font-medium text-zinc-700">
         音乐源
-        <select
-          name="provider"
-          required
-          class="form-control"
-        >
-          {% for provider in providers %}
-          <option value="{{provider}}">{{provider}}</option>
-          {% endfor %}
-        </select>
+        <div class="relative">
+          <select name="provider" required class="h-10 w-full appearance-none rounded-md border border-zinc-200 bg-white py-0 pr-10 pl-3 text-sm shadow-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-950/10">
+            {% for provider in providers %}
+            <option value="{{provider}}">{{provider}}</option>
+            {% endfor %}
+          </select>
+          <svg class="pointer-events-none absolute top-1/2 right-3.5 h-4 w-4 -translate-y-1/2 text-zinc-500" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <path d="m6 8 4 4 4-4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
       </label>
-      <label class="grid gap-1.5 text-xs font-semibold text-slate-600">
-        关键词
-        <input
-          type="search"
-          name="q"
-          required
-          placeholder="歌曲、歌手或专辑"
-          class="form-control"
-        />
-      </label>
+      <div class="grid gap-2 text-sm font-medium text-zinc-700">
+        <label for="search-query">关键词</label>
+        <span class="flex gap-2">
+          <input
+            id="search-query"
+            type="search"
+            name="q"
+            required
+            placeholder="歌曲、歌手或专辑"
+            class="h-10 min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-3 text-sm shadow-sm outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:ring-2 focus:ring-zinc-950/10"
+          />
+          <button type="submit" class="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-50">
+            搜索
+          </button>
+        </span>
+      </div>
     </div>
-    <label class="inline-flex items-center gap-2">
-      <input type="checkbox" name="lossless" value="true" />
-      <span>仅显示无损</span>
-    </label>
+    <p class="text-sm text-zinc-500">当前仅支持下载 FLAC 无损音质，试听使用低码率音频。</p>
 
     <input type="hidden" name="page" value="1" />
     <input type="hidden" name="limit" value="20" />
 
-    <button
-      type="submit"
-      class="primary-button px-6 py-2.5 text-sm"
-    >
-      搜索音乐
-    </button>
-    <span id="search-loading" class="htmx-indicator text-sm text-indigo-600">
-      搜索中...
+    <span id="search-loading" class="invisible ml-3 text-sm text-zinc-500 opacity-0 transition-opacity duration-150 [&.htmx-request]:visible [&.htmx-request]:opacity-100">
+      搜索中……
     </span>
   </form>
 </section>
@@ -72,9 +61,10 @@
 <section
   id="search-results"
   aria-live="polite"
-  class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm"
+  class="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm sm:p-6"
 >
   {% include "components/empty.html" %}
 </section>
+</div>
 
 {% endblock %}

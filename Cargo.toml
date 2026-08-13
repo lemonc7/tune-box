@@ -59,6 +59,7 @@ askama = { version = "0.16", default-features = false, features = [
   "derive",
   "std",
   "config",
+  "urlencode",
 ] }
 
 url = "2"

@@ -44,6 +44,8 @@ CREATE TABLE downloads (
 
 CREATE TABLE songs (
     id INTEGER PRIMARY KEY,
+    -- 程序下载的歌曲绑定对应任务；扫描导入的歌曲可以为空
+    download_id INTEGER REFERENCES downloads(id) ON DELETE SET NULL,
 
     path TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
@@ -74,6 +76,10 @@ CREATE INDEX idx_songs_name
 -- 同步曲库使用
 CREATE INDEX idx_songs_scan_token 
     ON songs(scan_token);
+-- 一个下载任务最多对应一首曲库歌曲，NULL 可重复
+CREATE UNIQUE INDEX idx_songs_download_id
+    ON songs(download_id)
+    WHERE download_id IS NOT NULL;
 -- 查询歌曲对应的歌手，按id排序
 CREATE INDEX idx_song_artists_song_id_id
     ON song_artists(song_id, id);

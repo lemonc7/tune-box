@@ -52,6 +52,32 @@ impl Downloader {
         }
     }
 
+    pub fn directory(&self) -> &std::path::Path {
+        &self.dir
+    }
+
+    pub async fn remove_task_files(&self, task_id: i64) -> Result<(), DownloadError> {
+        let part = self.dir.join(format!(".download-{task_id}.part"));
+        remove_if_exists(&part).await?;
+
+        let ready_prefix = format!(".download-{task_id}.ready.");
+        let mut entries = match fs::read_dir(&self.dir).await {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
+        };
+        while let Some(entry) = entries.next_entry().await? {
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(&ready_prefix))
+            {
+                remove_if_exists(&entry.path()).await?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn download<F>(
         &self,
         resource: ResolvedResource,
@@ -231,6 +257,14 @@ impl Downloader {
             path: target,
             size: downloaded,
         })
+    }
+}
+
+async fn remove_if_exists(path: &std::path::Path) -> Result<(), DownloadError> {
+    match fs::remove_file(path).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
     }
 }
 

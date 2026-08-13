@@ -7,9 +7,14 @@ use std::{collections::HashMap, error::Error, sync::Arc, time::Duration};
 
 use axum::{
     Router,
+    extract::State,
     http::{self, HeaderName, Request},
+    middleware::{Next, from_fn_with_state},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
+use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
+use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use tokio::{net::TcpListener, signal};
 use tokio_util::sync::CancellationToken;
 use tower::{ServiceBuilder, limit::GlobalConcurrencyLimitLayer};
@@ -27,9 +32,10 @@ use tracing_subscriber::EnvFilter;
 use crate::{
     server::{
         config::{Config, Server, load_config},
-        db::{self, repository::Repository},
+        db::{self, Repository},
         download::Downloader,
         manager::Manager,
+        mcp::MusicMcp,
         provider::{Provider, kuwo::KuwoProvider},
         service::Service,
         tag::Embedder,
@@ -37,8 +43,9 @@ use crate::{
     web::{
         assets::assets,
         handler::{
-            cancel_download, create_download, download_card, downloads, health_check, home,
-            more_downloads, pause_download, resume_download, search,
+            cancel_download, create_download, delete_download, delete_song, download_card,
+            downloads, health_check, home, library, library_items, more_downloads, pause_download,
+            resume_download, retry_download, search, stream_preview, sync_library,
         },
         state::AppState,
     },
@@ -77,12 +84,17 @@ async fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let mut providers: HashMap<String, Box<dyn Provider>> = HashMap::new();
     providers.insert(kw.id().to_owned(), Box::new(kw));
 
-    let downloader = Downloader::new(download_client, "downloads", config.server.max_bytes);
+    let downloader = Downloader::new(
+        download_client.clone(),
+        "downloads",
+        config.server.max_bytes,
+    );
 
     let service = Arc::new(Service::new(
         repository.clone(),
         providers,
         downloader,
+        download_client,
         Embedder::new(api_client),
     ));
 
@@ -183,16 +195,36 @@ async fn shutdown_signal() {
 }
 
 fn build_router(config: &Server, state: AppState) -> Router {
+    let mcp = MusicMcp::new(Arc::clone(&state.service), state.manager.clone());
+    let mcp_service: StreamableHttpService<MusicMcp, LocalSessionManager> =
+        StreamableHttpService::new(
+            move || Ok(mcp.clone()),
+            Default::default(),
+            StreamableHttpServerConfig::default()
+                .with_json_response(true)
+                .disable_allowed_hosts(),
+        );
+    let mcp_routes = Router::new()
+        .nest_service("/mcp", mcp_service)
+        .layer(from_fn_with_state(config.mcp_token.clone(), authorize_mcp));
+
     // 需要调用handler/service/provider或数据库
     let dynamic_routes = Router::new()
         .route("/", get(home))
         .route("/search", get(search))
+        .route("/preview", get(stream_preview))
         .route("/downloads", get(downloads).post(create_download))
         .route("/downloads/more", get(more_downloads))
         .route("/downloads/{id}/card", get(download_card))
         .route("/downloads/{id}/pause", post(pause_download))
         .route("/downloads/{id}/resume", post(resume_download))
         .route("/downloads/{id}/cancel", post(cancel_download))
+        .route("/downloads/{id}/retry", post(retry_download))
+        .route("/downloads/{id}/delete", post(delete_download))
+        .route("/library", get(library))
+        .route("/library/items", get(library_items))
+        .route("/library/sync", post(sync_library))
+        .route("/library/{id}/delete", post(delete_song))
         .layer(
             ServiceBuilder::new()
                 // 请求体最大64KB
@@ -219,6 +251,7 @@ fn build_router(config: &Server, state: AppState) -> Router {
     Router::new()
         .merge(dynamic_routes)
         .merge(static_routes)
+        .merge(mcp_routes)
         .route("/health", get(health_check))
         .layer(
             ServiceBuilder::new()
@@ -250,6 +283,22 @@ fn build_router(config: &Server, state: AppState) -> Router {
                 .layer(PropagateRequestIdLayer::new(request_id)),
         )
         .with_state(state)
+}
+
+async fn authorize_mcp(
+    State(token): State<String>,
+    request: axum::extract::Request,
+    next: Next,
+) -> Response {
+    let authorized = request
+        .headers()
+        .get(http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == format!("Bearer {token}"));
+    if !authorized {
+        return http::StatusCode::UNAUTHORIZED.into_response();
+    }
+    next.run(request).await
 }
 
 fn init_tracing() {

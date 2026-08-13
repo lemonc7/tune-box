@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     error::{ManagerError, ServiceError},
-    server::{db::repository::Repository, service::Service},
+    server::{db::Repository, service::Service},
 };
 
 enum ManagerCommand {
@@ -19,6 +19,10 @@ enum ManagerCommand {
         reply: oneshot::Sender<Result<bool, sqlx::Error>>,
     },
     Resume {
+        id: i64,
+        reply: oneshot::Sender<Result<bool, sqlx::Error>>,
+    },
+    Retry {
         id: i64,
         reply: oneshot::Sender<Result<bool, sqlx::Error>>,
     },
@@ -126,12 +130,21 @@ impl Manager {
                             let result = self.repository.resume_download(id).await;
                             let _ = reply.send(result);
                         }
+                        Some(ManagerCommand::Retry { id, reply }) => {
+                            let result = self.repository.retry_download(id).await;
+                            let _ = reply.send(result);
+                        }
                         Some(ManagerCommand::Cancel { id, reply }) => {
                             let result = self.repository.cancel_download(id).await;
                             if matches!(result, Ok(true))
                                 && let Some(token) = running_tokens.get(&id)
                             {
                                 token.cancel();
+                            }
+                            if matches!(result, Ok(true))
+                                && let Err(error) = self.service.cleanup_download_files(id).await
+                            {
+                                tracing::warn!(task_id = id, %error, "清理已取消任务的临时文件失败");
                             }
                             let _ = reply.send(result);
                         }
@@ -303,6 +316,22 @@ impl ManagerHandle {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(ManagerCommand::Cancel {
+                id,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| ManagerError::ManagerStopped)?;
+
+        reply_rx
+            .await
+            .map_err(|_| ManagerError::ManagerStopped)?
+            .map_err(Into::into)
+    }
+
+    pub async fn retry(&self, id: i64) -> Result<bool, ManagerError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(ManagerCommand::Retry {
                 id,
                 reply: reply_tx,
             })

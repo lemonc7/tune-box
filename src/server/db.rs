@@ -1,3 +1,8 @@
+pub mod codec;
+pub mod download;
+pub mod download_state;
+pub mod library;
+
 use std::{path::Path, str::FromStr, time::Duration};
 
 use sqlx::{
@@ -9,8 +14,16 @@ use tokio::fs;
 
 use crate::error::DatabaseError;
 
-pub mod model;
-pub mod repository;
+#[derive(Debug, Clone)]
+pub struct Repository {
+    pool: SqlitePool,
+}
+
+impl Repository {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+}
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 

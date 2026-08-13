@@ -1,20 +1,15 @@
-{% extends "layout/base.html" %}
-
-{% block title %}下载任务 - Tune Box{% endblock %}
-
-{% block content %}
-<section class="space-y-5">
+{% extends "layout/base.html" %} {% block title %}下载任务 - Tune Box{% endblock
+%} {% block content %}
+<section class="space-y-6">
   <header>
-    <h1 class="text-2xl font-bold text-slate-800">下载任务</h1>
-    <p class="mt-1 text-sm text-slate-500">查看下载进度并管理任务。</p>
+    <h1 class="text-2xl font-semibold tracking-tight">下载任务</h1>
+    <p class="mt-1 text-sm text-zinc-500">查看下载进度并管理任务。</p>
   </header>
 
-  <div id="download-list" class="space-y-3" aria-live="polite">
+  <div id="download-list" class="divide-y divide-zinc-100 overflow-visible rounded-lg border border-zinc-200 bg-white shadow-sm" aria-live="polite">
     {% if page.downloads.is_empty() %}
-    <div class="empty-state">暂无下载任务</div>
-    {% else %}
-      {% include "components/download_list.html" %}
-    {% endif %}
+    <div class="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 px-8 py-14 text-center text-sm text-zinc-500">暂无下载任务</div>
+    {% else %} {% include "components/download_list.html" %} {% endif %}
   </div>
 </section>
 {% endblock %}

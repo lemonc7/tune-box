@@ -8,7 +8,7 @@ use std::fmt::Write;
 use crate::{
     error::ProviderError,
     server::{
-        model::{QualitySpec, ResolvedResource},
+        model::{DOWNLOAD_QUALITY_ID, PREVIEW_QUALITY_ID, QualitySpec, ResolvedResource},
         provider::Provider,
     },
     shared::music::{Quality, SearchResult, Track as SearchTrack},
@@ -310,39 +310,16 @@ impl Provider for KuwoProvider {
 
 static QUALITIES: &[QualitySpec] = &[
     QualitySpec {
-        id: "128kmp3",
+        id: PREVIEW_QUALITY_ID,
         label: "MP3 128K",
         format: "mp3",
         bitrate: 128,
-        lossless: false,
     },
     QualitySpec {
-        id: "192kmp3",
-        label: "MP3 192K",
-        format: "mp3",
-        bitrate: 192,
-        lossless: false,
-    },
-    QualitySpec {
-        id: "320kmp3",
-        label: "MP3 320K",
-        format: "mp3",
-        bitrate: 320,
-        lossless: false,
-    },
-    QualitySpec {
-        id: "1000kape",
-        label: "APE",
-        format: "ape",
-        bitrate: 1000,
-        lossless: true,
-    },
-    QualitySpec {
-        id: "2000kflac",
+        id: DOWNLOAD_QUALITY_ID,
         label: "FLAC",
         format: "flac",
         bitrate: 2000,
-        lossless: true,
     },
 ];
 
@@ -368,24 +345,14 @@ fn parse_qualities(info: &str, formats: &str) -> Vec<Quality> {
         if pair.len() != 2 {
             continue;
         }
-        if pair[0].trim().eq_ignore_ascii_case("bitrate") {
-            match pair[1].trim() {
-                "128" => add("128kmp3"),
-                "192" => add("192kmp3"),
-                "320" => add("320kmp3"),
-                "1000" => add("1000kape"),
-                "2000" => add("2000kflac"),
-                _ => {}
-            }
+        if pair[0].trim().eq_ignore_ascii_case("bitrate") && pair[1].trim() == "2000" {
+            add(DOWNLOAD_QUALITY_ID);
         }
     }
 
     let formats_lower = formats.to_lowercase();
     if formats_lower.contains("flac") {
-        add("2000kflac");
-    }
-    if formats_lower.contains("ape") {
-        add("1000kape");
+        add(DOWNLOAD_QUALITY_ID);
     }
 
     result
@@ -433,4 +400,25 @@ where
     };
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DOWNLOAD_QUALITY_ID, parse_qualities};
+
+    #[test]
+    fn exposes_only_flac_as_download_quality() {
+        let qualities = parse_qualities(
+            "bitrate:128;bitrate:192;bitrate:320;bitrate:1000;bitrate:2000",
+            "mp3|ape|flac",
+        );
+
+        assert_eq!(
+            qualities
+                .iter()
+                .map(|quality| quality.id.as_str())
+                .collect::<Vec<_>>(),
+            [DOWNLOAD_QUALITY_ID]
+        );
+    }
 }

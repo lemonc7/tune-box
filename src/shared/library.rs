@@ -1,11 +1,16 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SongDto {
+pub struct Song {
     pub id: i64,
     pub name: String,
     pub artists: Vec<String>,
     pub extension: String,
     pub size: i64,
-    pub media_url: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SongPage {
+    pub songs: Vec<Song>,
+    pub next_before_id: Option<i64>,
 }

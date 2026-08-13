@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
 pub const DOWNLOAD_DIR: &str = "downloads";
+pub const DOWNLOAD_QUALITY_ID: &str = "2000kflac";
+pub const PREVIEW_QUALITY_ID: &str = "128kmp3";
 
 #[derive(Debug, Clone, Copy)]
 pub struct QualitySpec {
@@ -8,7 +10,6 @@ pub struct QualitySpec {
     pub label: &'static str,
     pub format: &'static str,
     pub bitrate: i32,
-    pub lossless: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -27,7 +28,6 @@ impl From<QualitySpec> for crate::shared::music::Quality {
             label: value.label.to_string(),
             format: value.format.to_string(),
             bitrate: value.bitrate,
-            lossless: value.lossless,
         }
     }
 }

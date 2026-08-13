@@ -85,6 +85,8 @@ pub enum DatabaseError {
 pub enum ServiceError {
     #[error("无效的provider")]
     InvalidProvider,
+    #[error("暂不支持下载该音质: {0}，当前只允许 FLAC")]
+    UnsupportedDownloadQuality(String),
     #[error("任务已存在")]
     AlreadyExists,
     #[error("任务状态已变化，期望 {expected:?}，实际 {actual:?}")]
@@ -119,6 +121,10 @@ pub enum ServiceError {
     Interrupted,
     #[error("下载文件路径丢失")]
     MissingDownloadPath,
+    #[error("曲库文件路径不在下载目录中")]
+    UnsafeLibraryPath,
+    #[error("曲库文件操作失败: {0}")]
+    LibraryIo(#[source] std::io::Error),
 }
 
 #[derive(Debug, thiserror::Error)]

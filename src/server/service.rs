@@ -7,20 +7,25 @@ use std::{
 
 use ::time::Duration as TimeDuration;
 use sqlx::types::time::OffsetDateTime;
-use tokio::{fs, sync::watch, time};
+use tokio::{
+    fs,
+    sync::{Mutex, watch},
+    time,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     error::{DownloadError, ProviderError, ServiceError, TagError},
     server::{
-        db::{model::DownloadRow, repository::Repository},
+        db::Repository,
         download::{DownloadOptions, DownloadProgress, DownloadResult, Downloader},
-        model::ResolvedResource,
+        model::{DOWNLOAD_QUALITY_ID, PREVIEW_QUALITY_ID, ResolvedResource},
         provider::Provider,
         tag::Embedder,
     },
     shared::{
         download::{Download, DownloadPage, DownloadStatus},
+        library::SongPage,
         music::{Metadata, SearchResult},
         request::{CreateDownloadRequest, SearchRequest},
     },
@@ -34,7 +39,10 @@ pub struct Service {
     repository: Repository,
     providers: HashMap<String, Box<dyn Provider>>,
     downloader: Downloader,
+    preview_client: reqwest::Client,
     embedder: Embedder,
+    /// 串行化曲库扫描、歌曲发布和歌曲删除，保证文件系统与数据库视图一致。
+    library_lock: Mutex<()>,
 }
 
 impl Service {
@@ -42,31 +50,53 @@ impl Service {
         repository: Repository,
         providers: HashMap<String, Box<dyn Provider>>,
         downloader: Downloader,
+        preview_client: reqwest::Client,
         embedder: Embedder,
     ) -> Self {
         Self {
             repository,
             providers,
             downloader,
+            preview_client,
             embedder,
+            library_lock: Mutex::new(()),
         }
     }
     pub async fn search(&self, req: SearchRequest) -> Result<SearchResult, ServiceError> {
         let provider = self.provider(&req.provider)?;
-        let mut result = provider.search(&req.query, req.page, req.limit).await?;
+        provider
+            .search(&req.query, req.page, req.limit)
+            .await
+            .map_err(Into::into)
+    }
 
-        if req.lossless {
-            result.tracks.iter_mut().for_each(|t| {
-                t.qualities.retain(|q| q.lossless);
-            });
+    pub async fn preview(
+        &self,
+        provider: &str,
+        track_id: &str,
+        range: Option<&str>,
+    ) -> Result<reqwest::Response, ServiceError> {
+        let resource = self
+            .provider(provider)?
+            .resolve(track_id, PREVIEW_QUALITY_ID)
+            .await?;
+        let mut request = self.preview_client.get(resource.url);
+        for (name, value) in resource.headers {
+            request = request.header(name, value);
         }
-        Ok(result)
+        if let Some(range) = range {
+            request = request.header(reqwest::header::RANGE, range);
+        }
+        Ok(request.send().await.map_err(DownloadError::from)?)
     }
 
     pub async fn create_download(
         &self,
         req: CreateDownloadRequest,
     ) -> Result<Option<i64>, ServiceError> {
+        if req.quality != DOWNLOAD_QUALITY_ID {
+            return Err(ServiceError::UnsupportedDownloadQuality(req.quality));
+        }
         let id = self
             .repository
             .add_download(
@@ -92,12 +122,9 @@ impl Service {
         limit: i64,
     ) -> Result<DownloadPage, ServiceError> {
         let limit = limit.clamp(1, 100);
-        let fetch_limit = limit.saturating_add(1);
+        let fetch_limit = limit + 1;
         let cursor = before_id.unwrap_or(i64::MAX);
-        let mut rows = self
-            .repository
-            .list_downloads_before(cursor, fetch_limit)
-            .await?;
+        let mut rows = self.repository.list_downloads(cursor, fetch_limit).await?;
 
         let has_more = rows.len() > limit as usize;
         if has_more {
@@ -111,13 +138,13 @@ impl Service {
         };
 
         Ok(DownloadPage {
-            downloads: rows.into_iter().map(Into::into).collect(),
+            downloads: rows,
             next_before_id,
         })
     }
 
     pub async fn get_download(&self, id: i64) -> Result<Option<Download>, ServiceError> {
-        Ok(self.repository.get_download(id).await?.map(Into::into))
+        Ok(self.repository.get_download(id).await?)
     }
 
     fn provider(&self, name: &str) -> Result<&dyn Provider, ServiceError> {
@@ -140,7 +167,7 @@ impl Service {
     // task必须由claim_next原子领取
     pub async fn execute_claimed(
         &self,
-        task: DownloadRow,
+        task: Download,
         cancellation: CancellationToken,
     ) -> Result<(), ServiceError> {
         match task.status {
@@ -153,10 +180,212 @@ impl Service {
         }
     }
 
+    pub async fn list_songs(
+        &self,
+        keyword: &str,
+        before_id: Option<i64>,
+        limit: i64,
+    ) -> Result<SongPage, ServiceError> {
+        let limit = limit.clamp(1, 100);
+        let fetch_limit = limit + 1;
+        let before_id = before_id.unwrap_or(i64::MAX);
+        let keywords: Vec<&str> = keyword.split_whitespace().collect();
+        let mut rows = self
+            .repository
+            .list_songs(&keywords, before_id, fetch_limit)
+            .await?;
+
+        let has_more = rows.len() > limit as usize;
+        if has_more {
+            rows.truncate(limit as usize);
+        }
+
+        let next_before_id = if has_more {
+            rows.last().map(|row| row.id)
+        } else {
+            None
+        };
+
+        Ok(SongPage {
+            songs: rows,
+            next_before_id,
+        })
+    }
+
+    pub async fn count_songs(&self) -> Result<i64, ServiceError> {
+        Ok(self.repository.count_songs().await?)
+    }
+
+    pub async fn cleanup_download_files(&self, id: i64) -> Result<(), ServiceError> {
+        self.downloader.remove_task_files(id).await?;
+        Ok(())
+    }
+
+    pub async fn delete_download(&self, id: i64) -> Result<bool, ServiceError> {
+        let deleted = self.repository.delete_download(id).await?;
+        if deleted {
+            self.cleanup_download_files(id).await?;
+        }
+        Ok(deleted)
+    }
+
+    pub async fn sync_library(&self) -> Result<i64, ServiceError> {
+        use crate::server::db::library::ScannedSong;
+
+        let _library_guard = self.library_lock.lock().await;
+        let directory = self.downloader.directory();
+        fs::create_dir_all(directory)
+            .await
+            .map_err(ServiceError::LibraryIo)?;
+        let mut entries = fs::read_dir(directory)
+            .await
+            .map_err(ServiceError::LibraryIo)?;
+        let mut songs = Vec::new();
+
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(ServiceError::LibraryIo)?
+        {
+            if !entry
+                .file_type()
+                .await
+                .map_err(ServiceError::LibraryIo)?
+                .is_file()
+            {
+                continue;
+            }
+            let file_name = entry.file_name();
+            let Some(file_name) = file_name.to_str() else {
+                continue;
+            };
+            if file_name.starts_with('.') {
+                continue;
+            }
+
+            let path = entry.path();
+            let Some(extension) = path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(str::to_ascii_lowercase)
+            else {
+                continue;
+            };
+            if !matches!(
+                extension.as_str(),
+                "flac" | "mp3" | "wav" | "m4a" | "aac" | "ape" | "ogg" | "opus"
+            ) {
+                continue;
+            }
+
+            let mut name = path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("未知歌曲")
+                .to_owned();
+            let mut artists = Vec::new();
+            if extension == "flac" {
+                match Embedder::read_flac_metadata(&path).await {
+                    Ok(info) => {
+                        if !info.title.trim().is_empty() {
+                            name = info.title;
+                        }
+                        artists = info.artists;
+                    }
+                    Err(error) => {
+                        tracing::warn!(path = ?path, %error, "读取 FLAC 元数据失败，使用文件名");
+                    }
+                }
+            }
+
+            let size = i64::try_from(
+                entry
+                    .metadata()
+                    .await
+                    .map_err(ServiceError::LibraryIo)?
+                    .len(),
+            )
+            .map_err(|_| ServiceError::SizeOverflow)?;
+            let path = path
+                .to_str()
+                .ok_or(ServiceError::UnsafeLibraryPath)?
+                .to_owned();
+            songs.push(ScannedSong {
+                path,
+                name,
+                extension,
+                size,
+                artists,
+            });
+        }
+
+        let scan_token = OffsetDateTime::now_utc().unix_timestamp_nanos().to_string();
+        self.repository.sync_library(&songs, &scan_token).await?;
+        self.count_songs().await
+    }
+
+    pub async fn delete_song(&self, id: i64) -> Result<bool, ServiceError> {
+        let _library_guard = self.library_lock.lock().await;
+        let Some(song) = self.repository.get_song_file(id).await? else {
+            return Ok(false);
+        };
+
+        fs::create_dir_all(self.downloader.directory())
+            .await
+            .map_err(ServiceError::LibraryIo)?;
+        let root = fs::canonicalize(self.downloader.directory())
+            .await
+            .map_err(ServiceError::LibraryIo)?;
+        let path = PathBuf::from(&song.path);
+
+        let staged = match fs::canonicalize(&path).await {
+            Ok(canonical) => {
+                if !canonical.starts_with(&root) {
+                    return Err(ServiceError::UnsafeLibraryPath);
+                }
+                let staged = root.join(format!(".delete-song-{id}.tmp"));
+                fs::rename(&canonical, &staged)
+                    .await
+                    .map_err(ServiceError::LibraryIo)?;
+                Some((canonical, staged))
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => None,
+            Err(error) => return Err(ServiceError::LibraryIo(error)),
+        };
+
+        let deleted = match self.repository.delete_song_with_download(id).await {
+            Ok(deleted) => deleted,
+            Err(error) => {
+                if let Some((original, staged)) = &staged
+                    && let Err(restore_error) = fs::rename(staged, original).await
+                {
+                    tracing::error!(?original, ?staged, %restore_error, "恢复待删除音乐文件失败");
+                }
+                return Err(error.into());
+            }
+        };
+
+        if !deleted {
+            if let Some((original, staged)) = &staged {
+                fs::rename(staged, original)
+                    .await
+                    .map_err(ServiceError::LibraryIo)?;
+            }
+            return Ok(false);
+        }
+
+        if let Some((_, staged)) = staged
+            && let Err(error) = fs::remove_file(&staged).await
+        {
+            tracing::error!(path = ?staged, %error, "清理已从曲库删除的音乐文件失败");
+        }
+        Ok(true)
+    }
+
     // 下载阶段
     async fn execute_download(
         &self,
-        task: DownloadRow,
+        task: Download,
         cancellation: CancellationToken,
     ) -> Result<(), ServiceError> {
         let provider = match self.provider(&task.provider) {
@@ -234,7 +463,7 @@ impl Service {
     // 打标签阶段
     async fn execute_tagging(
         &self,
-        task: DownloadRow,
+        task: Download,
         cancellation: CancellationToken,
     ) -> Result<(), ServiceError> {
         // 获取ready路径
@@ -281,7 +510,7 @@ impl Service {
         // 因此从写标签开始进入不可中断区，最终由 status + version 决定是否提交结果。
         let result = async {
             self.embedder
-                .embed_flac(path, task.metadata.0.clone(), lyrics)
+                .embed_flac(path, task.metadata.clone(), lyrics)
                 .await?;
             self.publish_and_complete(&task, path).await?;
             Ok::<(), ServiceError>(())
@@ -298,9 +527,10 @@ impl Service {
     // 发布文件并写入曲库
     async fn publish_and_complete(
         &self,
-        task: &DownloadRow,
+        task: &Download,
         ready_path: &str,
     ) -> Result<(), ServiceError> {
+        let _library_guard = self.library_lock.lock().await;
         let ready_path = Path::new(ready_path);
         // 发布文件，使用硬链接
         let published = publish_ready_file(task, ready_path).await?;
@@ -328,7 +558,7 @@ impl Service {
                 final_path,
                 extension,
                 size,
-                &task.metadata.0,
+                &task.metadata,
             )
             .await?;
 
@@ -386,7 +616,7 @@ impl Service {
     // 下载失败处理
     async fn handle_download_failure(
         &self,
-        task: &DownloadRow,
+        task: &Download,
         stage: DownloadStatus,
         error: &ServiceError,
     ) -> Result<(), ServiceError> {
@@ -430,7 +660,7 @@ impl Service {
 
     async fn handle_tagging_failure(
         &self,
-        task: &DownloadRow,
+        task: &Download,
         error: &ServiceError,
     ) -> Result<(), ServiceError> {
         let message = error.to_string();
@@ -573,7 +803,7 @@ struct PublishedFile {
 }
 
 async fn publish_ready_file(
-    task: &DownloadRow,
+    task: &Download,
     ready_path: &Path,
 ) -> Result<PublishedFile, ServiceError> {
     let parent = ready_path
@@ -652,7 +882,14 @@ async fn files_are_same(_left: &Path, _right: &Path) -> Result<bool, ServiceErro
 
 #[cfg(test)]
 mod tests {
-    use super::{retry_delay, sanitize_filename_component};
+    use std::{collections::HashMap, sync::Arc, time::SystemTime};
+
+    use super::{Service, retry_delay, sanitize_filename_component};
+    use crate::{
+        error::ServiceError,
+        server::{db, download::Downloader, tag::Embedder},
+        shared::request::CreateDownloadRequest,
+    };
 
     #[test]
     fn sanitizes_file_name_components() {
@@ -669,5 +906,89 @@ mod tests {
         assert_eq!(retry_delay(2).as_secs(), 4);
         assert_eq!(retry_delay(3).as_secs(), 8);
         assert_eq!(retry_delay(10).as_secs(), 300);
+    }
+
+    #[tokio::test]
+    async fn library_sync_waits_for_library_mutation_lock() {
+        let nonce = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "tune-box-library-lock-{}-{nonce}",
+            std::process::id()
+        ));
+        tokio::fs::create_dir_all(&directory).await.unwrap();
+        tokio::fs::write(directory.join("song.mp3"), b"audio")
+            .await
+            .unwrap();
+
+        let pool = db::connect_memory().await.unwrap();
+        let repository = db::Repository::new(pool);
+        let client = reqwest::Client::new();
+        let service = Arc::new(Service::new(
+            repository,
+            HashMap::new(),
+            Downloader::new(client.clone(), &directory, 1024),
+            client.clone(),
+            Embedder::new(client),
+        ));
+
+        let guard = service.library_lock.lock().await;
+        let syncing_service = Arc::clone(&service);
+        let syncing = tokio::spawn(async move { syncing_service.sync_library().await });
+        tokio::task::yield_now().await;
+        assert!(!syncing.is_finished());
+
+        drop(guard);
+        let count = tokio::time::timeout(std::time::Duration::from_secs(1), syncing)
+            .await
+            .expect("曲库锁释放后同步应当完成")
+            .unwrap()
+            .unwrap();
+        assert_eq!(count, 1);
+
+        tokio::fs::remove_dir_all(directory).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn rejects_non_flac_downloads_before_inserting_task() {
+        let pool = db::connect_memory().await.unwrap();
+        let repository = db::Repository::new(pool);
+        let client = reqwest::Client::new();
+        let service = Service::new(
+            repository,
+            HashMap::new(),
+            Downloader::new(client.clone(), std::env::temp_dir(), 1024),
+            client.clone(),
+            Embedder::new(client),
+        );
+
+        let result = service
+            .create_download(CreateDownloadRequest {
+                provider: "kuwo".to_owned(),
+                track_id: "1".to_owned(),
+                quality: "1000kape".to_owned(),
+                name: "song".to_owned(),
+                artists: vec!["artist".to_owned()],
+                album: String::new(),
+                album_artist: String::new(),
+                date: String::new(),
+                cover_url: String::new(),
+            })
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(ServiceError::UnsupportedDownloadQuality(quality)) if quality == "1000kape"
+        ));
+        assert!(
+            service
+                .list_downloads(None, 20)
+                .await
+                .unwrap()
+                .downloads
+                .is_empty()
+        );
     }
 }

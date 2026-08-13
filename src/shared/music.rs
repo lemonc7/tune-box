@@ -40,5 +40,4 @@ pub struct Quality {
     pub label: String,
     pub format: String,
     pub bitrate: i32,
-    pub lossless: bool,
 }
