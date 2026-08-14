@@ -3,11 +3,11 @@ services:
     image: lemonc7/tune-box:latest
     container_name: tune-box
     restart: unless-stopped
-    user: 1000:1000
+    environment:
+      - TZ=Asia/Shanghai
     ports:
       - 8080:8080
     volumes:
-      - /etc/localtime:/etc/localtime:ro
       - ./config:/app/config:ro
       - ./data:/app/data
       - ./downloads:/app/downloads

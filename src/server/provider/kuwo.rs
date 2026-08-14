@@ -246,7 +246,8 @@ impl Provider for KuwoProvider {
             .abs_list
             .iter()
             .map(|item| item.album_id.trim())
-            .filter(|album_id| !album_id.is_empty())
+            // 酷我会用 "0" 表示歌曲没有可查询的专辑，不能把它当成真实专辑 ID。
+            .filter(|album_id| is_valid_album_id(album_id))
             .filter(|album_id| seen_album_ids.insert((*album_id).to_owned()))
             .take(MAX_ALBUM_INFO_PER_SEARCH)
             .map(ToOwned::to_owned)
@@ -264,7 +265,10 @@ impl Provider for KuwoProvider {
         for item in resp.abs_list {
             let id = item.music_rid.trim_start_matches("MUSIC_").to_string();
             let qualities = parse_qualities(&item.music_info, &item.format);
-            let info = album_infos.get(&item.album_id).cloned().unwrap_or_default();
+            let info = album_infos
+                .get(item.album_id.trim())
+                .cloned()
+                .unwrap_or_default();
             let album_artist = if info.1.is_empty() {
                 item.album_artist.clone()
             } else {
@@ -428,6 +432,10 @@ fn split_non_empty(value: &str, separator: &str) -> Vec<String> {
         .collect()
 }
 
+fn is_valid_album_id(album_id: &str) -> bool {
+    !album_id.is_empty() && album_id != "0"
+}
+
 fn cover_url(path: &str) -> String {
     let mut p = path.trim();
     if p.is_empty() {
@@ -465,7 +473,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{DOWNLOAD_QUALITY_ID, parse_qualities};
+    use super::{DOWNLOAD_QUALITY_ID, is_valid_album_id, parse_qualities};
+
+    #[test]
+    fn rejects_missing_album_ids() {
+        assert!(!is_valid_album_id(""));
+        assert!(!is_valid_album_id("0"));
+        assert!(is_valid_album_id("12345"));
+    }
 
     #[test]
     fn exposes_only_flac_as_download_quality() {

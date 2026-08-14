@@ -1,7 +1,6 @@
 [server]
 port = 8080
 http_timeout = 30
-# 下载过程中连续多少秒没有收到数据就重试；不是整个文件的总下载时限
 download_read_timeout = 30
 request_timeout = 30
 mcp_token = "mcp_token"
