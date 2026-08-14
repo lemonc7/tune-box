@@ -1,13 +1,13 @@
 services:
   tune-go:
-    image: lemonc7/tune-go:latest
-    container_name: tune-go
+    image: lemonc7/tune-box:latest
+    container_name: tune-box
     restart: unless-stopped
-    environment:
-      - TZ=Asia/Shanghai
+    user: 1000:1000
     ports:
-      - "8080:8080"
+      - 8080:8080
     volumes:
-      - ./config:/app/config
+      - /etc/localtime:/etc/localtime:ro
+      - ./config:/app/config:ro
       - ./data:/app/data
-      - ./download:/app/download
+      - ./downloads:/app/downloads

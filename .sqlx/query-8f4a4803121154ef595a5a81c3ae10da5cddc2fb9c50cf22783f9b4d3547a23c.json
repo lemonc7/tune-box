@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE downloads\n            SET status = 'paused',\n                updated_at = CURRENT_TIMESTAMP\n            WHERE id = ?\n              AND status IN ('pending', 'resolving', 'downloading')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "8f4a4803121154ef595a5a81c3ae10da5cddc2fb9c50cf22783f9b4d3547a23c"
+}

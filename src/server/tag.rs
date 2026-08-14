@@ -1,0 +1,424 @@
+use std::{
+    io::{self, Cursor},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    path::Path,
+    time::Duration,
+};
+
+use futures_util::StreamExt;
+use lofty::{
+    config::WriteOptions,
+    file::{AudioFile, TaggedFileExt},
+    picture::{MimeType, Picture, PictureType},
+    probe::Probe,
+    tag::{ItemKey, ItemValue, Tag, TagItem},
+};
+use reqwest::{
+    Url,
+    dns::{Addrs, Name, Resolve, Resolving},
+    redirect,
+};
+
+use crate::{error::TagError, shared::music::Metadata};
+
+const MAX_COVER_BYTES: usize = 2 * 1024 * 1024;
+
+pub struct Embedder {
+    client: reqwest::Client,
+    dns_timeout: Duration,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FlacInfo {
+    pub title: String,
+    pub artists: Vec<String>,
+}
+
+impl Embedder {
+    pub fn new(timeout: Duration) -> Result<Self, reqwest::Error> {
+        let dns_timeout = timeout.min(Duration::from_secs(10));
+        // 封面地址来自客户端元数据。禁用系统代理，并在真正建立连接的 DNS
+        // 解析器中只返回公网地址，避免 DNS 重绑定绕过预检查。
+        let client = reqwest::Client::builder()
+            .timeout(timeout)
+            .read_timeout(timeout)
+            .redirect(redirect::Policy::custom(|attempt| {
+                if attempt.previous().len() >= 5 {
+                    attempt.error("封面图重定向次数过多")
+                } else if has_safe_url_destination(attempt.url()) {
+                    attempt.follow()
+                } else {
+                    attempt.stop()
+                }
+            }))
+            .no_proxy()
+            .dns_resolver(PublicDnsResolver {
+                timeout: dns_timeout,
+            })
+            .build()?;
+        Ok(Self {
+            client,
+            dns_timeout,
+        })
+    }
+
+    pub async fn embed_flac(
+        &self,
+        path: impl AsRef<Path>,
+        metadata: Metadata,
+        lyrics: String,
+    ) -> Result<(), TagError> {
+        let cover_info = self.fetch_cover(&metadata.cover_url).await?;
+        let path = path.as_ref().to_owned();
+
+        // Lofty的解析和落盘API是同步阻塞操作，不能直接占用Tokio worker。
+        tokio::task::spawn_blocking(move || {
+            Self::write_flac_tags(&path, metadata, lyrics, cover_info)
+        })
+        .await?
+    }
+
+    fn write_flac_tags(
+        path: &Path,
+        metadata: Metadata,
+        lyrics: String,
+        cover_info: Option<Vec<u8>>,
+    ) -> Result<(), TagError> {
+        let mut tagged_file = Probe::open(path)?.read()?;
+        // 获取或新建 primary tag
+        let tag = match tagged_file.primary_tag_mut() {
+            Some(t) => t,
+            None => {
+                let tag_type = tagged_file.primary_tag_type();
+                tagged_file.insert_tag(Tag::new(tag_type));
+                tagged_file.primary_tag_mut().unwrap()
+            }
+        };
+
+        // 写入常见元数据字段
+        Self::set_tag_field(tag, ItemKey::TrackTitle, metadata.name);
+        Self::set_artists(tag, &metadata.artists);
+        Self::set_tag_field(tag, ItemKey::AlbumTitle, metadata.album);
+        Self::set_tag_field(tag, ItemKey::Lyrics, lyrics);
+        Self::set_tag_field(tag, ItemKey::AlbumArtist, metadata.album_artist);
+        Self::set_tag_field(tag, ItemKey::RecordingDate, metadata.date);
+
+        // metadata是完整快照：先清理旧的正面封面；其他类型图片保持不变。
+        tag.remove_picture_type(PictureType::CoverFront);
+        if let Some(data) = cover_info {
+            // 根据图片签名识别实际格式，避免仅信任 HTTP Content-Type。
+            let mut picture = Picture::from_reader(&mut Cursor::new(data))
+                .map_err(|_| TagError::UnsupportedCoverFormat)?;
+            if !matches!(picture.mime_type(), Some(MimeType::Jpeg | MimeType::Png)) {
+                return Err(TagError::UnsupportedCoverFormat);
+            }
+            picture.set_pic_type(PictureType::CoverFront);
+            tag.push_picture(picture);
+        }
+
+        tagged_file.save_to_path(path, WriteOptions::default())?;
+        Ok(())
+    }
+
+    fn set_tag_field(tag: &mut Tag, key: ItemKey, value: String) {
+        if value.trim().is_empty() {
+            tag.remove_key(key);
+            return;
+        };
+
+        let mut value = value;
+        let end = value.trim_end().len();
+        value.truncate(end);
+        let start = value.len() - value.trim_start().len();
+        if start > 0 {
+            value.drain(..start);
+        }
+
+        tag.insert_text(key, value);
+    }
+
+    fn set_artists(tag: &mut Tag, artists: &[String]) {
+        tag.remove_key(ItemKey::TrackArtist);
+
+        for artist in artists {
+            let artist = artist.trim();
+            if artist.is_empty() {
+                continue;
+            }
+
+            tag.push(TagItem::new(
+                ItemKey::TrackArtist,
+                ItemValue::Text(artist.to_string()),
+            ));
+        }
+    }
+
+    async fn fetch_cover(&self, cover_url: &str) -> Result<Option<Vec<u8>>, TagError> {
+        let cover_url = cover_url.trim();
+        if cover_url.is_empty() {
+            return Ok(None);
+        }
+
+        let url = Url::parse(cover_url).map_err(|_| TagError::InvalidCoverUrl)?;
+        validate_public_url(&url, self.dns_timeout).await?;
+
+        let resp = self.client.get(url.as_str()).send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(TagError::HttpStatus(status));
+        }
+
+        if resp
+            .content_length()
+            .is_some_and(|length| length > MAX_COVER_BYTES as u64)
+        {
+            return Err(TagError::CoverSizeInvalid);
+        }
+
+        let mut data = Vec::new();
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            if data.len() + chunk.len() > MAX_COVER_BYTES {
+                return Err(TagError::CoverSizeInvalid);
+            }
+            data.extend_from_slice(&chunk);
+        }
+        if data.is_empty() {
+            return Err(TagError::CoverSizeInvalid);
+        }
+
+        Ok(Some(data))
+    }
+
+    pub async fn read_flac_metadata(path: impl AsRef<Path>) -> Result<FlacInfo, TagError> {
+        let path = path.as_ref().to_owned();
+        tokio::task::spawn_blocking(move || Self::read_flac_metadata_blocking(&path)).await?
+    }
+
+    fn read_flac_metadata_blocking(path: &Path) -> Result<FlacInfo, TagError> {
+        let tagged_file = Probe::open(path)?.read()?;
+        let mut info = FlacInfo::default();
+        if let Some(tag) = tagged_file.primary_tag() {
+            if let Some(title) = tag.get_string(ItemKey::TrackTitle) {
+                info.title = title.trim().to_string();
+            }
+            info.artists = artists_from_tag(tag);
+        };
+
+        Ok(info)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PublicDnsResolver {
+    timeout: Duration,
+}
+
+impl Resolve for PublicDnsResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let host = name.as_str().to_owned();
+        let timeout = self.timeout;
+        Box::pin(async move {
+            let addresses =
+                tokio::time::timeout(timeout, tokio::net::lookup_host((host.as_str(), 0)))
+                    .await
+                    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "解析封面图域名超时"))??;
+            let addresses = addresses
+                .filter(|address| is_public_ip(address.ip()))
+                .collect::<Vec<_>>();
+            if addresses.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "目标域名没有可用的公网地址",
+                )
+                .into());
+            }
+            Ok(Box::new(addresses.into_iter()) as Addrs)
+        })
+    }
+}
+
+async fn validate_public_url(url: &Url, timeout: Duration) -> Result<(), TagError> {
+    if !has_safe_url_destination(url) {
+        return Err(TagError::InvalidCoverUrl);
+    }
+
+    let port = url
+        .port_or_known_default()
+        .ok_or(TagError::InvalidCoverUrl)?;
+    match url.host().ok_or(TagError::InvalidCoverUrl)? {
+        url::Host::Ipv4(address) => {
+            if !is_public_ip(IpAddr::V4(address)) {
+                return Err(TagError::InvalidCoverUrl);
+            }
+        }
+        url::Host::Ipv6(address) => {
+            if !is_public_ip(IpAddr::V6(address)) {
+                return Err(TagError::InvalidCoverUrl);
+            }
+        }
+        url::Host::Domain(host) => {
+            let addresses = tokio::time::timeout(timeout, tokio::net::lookup_host((host, port)))
+                .await
+                .map_err(|_| {
+                    TagError::ResolveCoverHost(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "解析封面图域名超时",
+                    ))
+                })?
+                .map_err(TagError::ResolveCoverHost)?
+                .collect::<Vec<SocketAddr>>();
+            if addresses.is_empty() || addresses.iter().any(|address| !is_public_ip(address.ip())) {
+                return Err(TagError::InvalidCoverUrl);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn has_safe_url_destination(url: &Url) -> bool {
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return false;
+    }
+
+    match url.host() {
+        Some(url::Host::Ipv4(address)) => is_public_ip(IpAddr::V4(address)),
+        Some(url::Host::Ipv6(address)) => is_public_ip(IpAddr::V6(address)),
+        Some(url::Host::Domain(host)) => !host.eq_ignore_ascii_case("localhost"),
+        None => false,
+    }
+}
+
+fn is_public_ip(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(address) => is_public_ipv4(address),
+        IpAddr::V6(address) => is_public_ipv6(address),
+    }
+}
+
+fn is_public_ipv4(address: Ipv4Addr) -> bool {
+    let [a, b, c, _] = address.octets();
+    !(a == 0
+        || a == 10
+        || a == 127
+        || (a == 100 && (64..=127).contains(&b))
+        || (a == 169 && b == 254)
+        || (a == 172 && (16..=31).contains(&b))
+        || (a == 192 && b == 0 && c == 0)
+        || (a == 192 && b == 0 && c == 2)
+        || (a == 192 && b == 168)
+        || (a == 198 && (b == 18 || b == 19))
+        || (a == 198 && b == 51 && c == 100)
+        || (a == 203 && b == 0 && c == 113)
+        || a >= 224)
+}
+
+fn is_public_ipv6(address: Ipv6Addr) -> bool {
+    if let Some(mapped) = address.to_ipv4_mapped() {
+        return is_public_ipv4(mapped);
+    }
+    let segments = address.segments();
+    // 只允许 2000::/3 全球单播，并排除文档地址 2001:db8::/32。
+    (segments[0] & 0xe000) == 0x2000 && !(segments[0] == 0x2001 && segments[1] == 0x0db8)
+}
+
+fn artists_from_tag(tag: &Tag) -> Vec<String> {
+    tag.get_strings(ItemKey::TrackArtist)
+        .map(str::trim)
+        .filter(|artist| !artist.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lofty::tag::TagType;
+
+    #[test]
+    fn set_tag_field_replaces_and_removes_values() {
+        let mut tag = Tag::new(TagType::VorbisComments);
+        tag.insert_text(ItemKey::TrackTitle, "old title".to_string());
+
+        Embedder::set_tag_field(&mut tag, ItemKey::TrackTitle, " new title ".to_string());
+        assert_eq!(tag.get_string(ItemKey::TrackTitle), Some("new title"));
+
+        Embedder::set_tag_field(&mut tag, ItemKey::TrackTitle, "  ".to_string());
+        assert_eq!(tag.get_string(ItemKey::TrackTitle), None);
+    }
+
+    #[test]
+    fn writes_artists_as_multiple_fields() {
+        let mut tag = Tag::new(TagType::VorbisComments);
+        let artists = vec![
+            " artist one ".to_string(),
+            "".to_string(),
+            "artist two".to_string(),
+        ];
+
+        Embedder::set_artists(&mut tag, &artists);
+
+        assert_eq!(
+            tag.get_strings(ItemKey::TrackArtist).collect::<Vec<_>>(),
+            ["artist one", "artist two"]
+        );
+    }
+
+    #[test]
+    fn reads_each_artist_field_without_guessing_delimiters() {
+        let mut tag = Tag::new(TagType::VorbisComments);
+        tag.push(TagItem::new(
+            ItemKey::TrackArtist,
+            ItemValue::Text("artist one; artist two".to_string()),
+        ));
+        tag.push(TagItem::new(
+            ItemKey::TrackArtist,
+            ItemValue::Text("artist three".to_string()),
+        ));
+
+        assert_eq!(
+            artists_from_tag(&tag),
+            ["artist one; artist two", "artist three"]
+        );
+    }
+
+    #[test]
+    fn rejects_non_public_cover_addresses() {
+        for address in [
+            "127.0.0.1",
+            "10.0.0.1",
+            "100.64.0.1",
+            "169.254.1.1",
+            "172.16.0.1",
+            "192.168.0.1",
+            "224.0.0.1",
+            "::1",
+            "fc00::1",
+            "fe80::1",
+            "2001:db8::1",
+        ] {
+            assert!(!is_public_ip(address.parse().unwrap()), "{address}");
+        }
+        for address in ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"] {
+            assert!(is_public_ip(address.parse().unwrap()), "{address}");
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_private_literal_cover_urls_before_requesting_them() {
+        for value in [
+            "http://127.0.0.1/cover.jpg",
+            "http://169.254.169.254/latest/meta-data",
+            "http://[::1]/cover.jpg",
+        ] {
+            assert!(matches!(
+                validate_public_url(&Url::parse(value).unwrap(), Duration::from_secs(1)).await,
+                Err(TagError::InvalidCoverUrl)
+            ));
+        }
+    }
+}

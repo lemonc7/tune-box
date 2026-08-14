@@ -1,0 +1,15 @@
+[server]
+port = 8080
+http_timeout = 30
+# 下载过程中连续多少秒没有收到数据就重试；不是整个文件的总下载时限
+download_read_timeout = 30
+request_timeout = 30
+mcp_token = "mcp_token"
+max_bytes = 104857600
+max_http_concurrent = 32
+max_download_concurrent = 3
+
+[providers.kuwo]
+search_url = "https://search.kuwo.cn/r.s"
+resolve_url = "https://mobi.kuwo.cn/mobi.s"
+lyric_url = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"

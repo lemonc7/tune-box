@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM song_artists WHERE song_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "836b2b6428101b075ecc8951ed6ac02a1df24706feba4a37b7556d72ea8df626"
+}

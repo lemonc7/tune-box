@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT COUNT(*)\n            FROM songs\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "COUNT(*)",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "84550bce04c3088212b0c12a8d638072f57b19994144b6f39ccbfabaebf2df71"
+}

@@ -1,0 +1,16 @@
+{% if result.tracks.is_empty() %}
+<div class="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 px-8 py-14 text-center text-sm text-zinc-500">没有符合条件的歌曲</div>
+{% else %}
+<div
+  class="mb-2 flex items-baseline justify-between gap-3 border-b border-zinc-100 pb-4"
+>
+  <h2 class="text-lg font-semibold tracking-tight">搜索结果</h2>
+
+  <span
+    class="rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600"
+  >
+    共 {{ result.total }} 条结果
+  </span>
+</div>
+
+{% include "components/track_list.html" %} {% endif %}

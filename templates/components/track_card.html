@@ -1,0 +1,102 @@
+<article
+  {% if loop.last %}
+    {% match next_url %}
+      {% when Some with (url) %}
+      hx-get="{{ url }}"
+      hx-trigger="revealed"
+      hx-swap="afterend"
+      hx-indicator="find .search-more-indicator"
+      {% when None %}
+    {% endmatch %}
+  {% endif %}
+  class="group flex flex-col gap-4 border-b border-zinc-100 py-4 last:border-0 sm:flex-row sm:items-center"
+>
+  {% if !track.cover_url.is_empty() %}
+  <img
+    src="{{ track.cover_url }}"
+    alt=""
+    loading="lazy"
+    class="h-14 w-14 shrink-0 rounded-md bg-zinc-100 object-cover"
+  />
+  {% else %}
+  <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-400">♪</div>
+  {% endif %}
+
+  <div class="min-w-0 flex-1">
+    <h3 class="truncate text-sm font-medium text-zinc-950">{{ track.name }}</h3>
+
+    <div class="mt-1 flex items-center gap-2 text-xs text-zinc-500">
+      <span class="truncate text-zinc-600">
+        {{ track.artists|join(" / ") }}
+      </span>
+      {% if !track.album.is_empty() %}
+      <span aria-hidden="true">•</span>
+      <span class="truncate">{{ track.album }}</span>
+      {% endif %}
+      {% if !track.date.is_empty() %}
+      <span aria-hidden="true">•</span>
+      <span>{{ track.date }}</span>
+      {% endif %}
+    </div>
+
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        data-preview-url="/preview?provider={{ track.provider|urlencode_strict }}&track_id={{ track.id|urlencode_strict }}"
+        data-preview-title="{{ track.name }}"
+        data-preview-artists="{{ track.artists|join(" / ") }}"
+        data-preview-cover="{{ track.cover_url }}"
+        class="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-900 shadow-sm transition-colors hover:bg-zinc-100"
+        aria-label="试听 {{ track.name }}"
+      >
+        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M6.5 4.8a1 1 0 0 1 1.53-.85l7.15 4.7a1 1 0 0 1 0 1.7l-7.15 4.7a1 1 0 0 1-1.53-.85V4.8Z" />
+        </svg>
+        试听
+      </button>
+      {% for quality in track.qualities %}
+      <form
+        class="inline-flex items-center gap-1"
+        hx-post="/downloads"
+        hx-target="#notify-{{ track.provider }}-{{ track.id }}"
+        hx-swap="innerHTML"
+        hx-indicator="find .track-loading"
+        hx-disabled-elt="find button"
+      >
+        <input type="hidden" name="provider" value="{{ track.provider }}" />
+        <input type="hidden" name="track_id" value="{{ track.id }}" />
+        <input type="hidden" name="quality" value="{{ quality.id }}" />
+        <input type="hidden" name="name" value="{{ track.name }}" />
+        {% for artist in track.artists %}
+        <input type="hidden" name="artists" value="{{ artist }}" />
+        {% endfor %}
+        <input type="hidden" name="album" value="{{ track.album }}" />
+        <input type="hidden" name="album_artist" value="{{ track.album_artist }}" />
+        <input type="hidden" name="date" value="{{ track.date }}" />
+        <input type="hidden" name="cover_url" value="{{ track.cover_url }}" />
+
+        <button type="submit" class="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-900 shadow-sm transition-colors hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-50">
+          <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <path d="M10 3.5v9m0 0 3.5-3.5M10 12.5 6.5 9M4 15.5h12" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          下载
+        </button>
+
+        <span class="track-loading invisible text-xs text-zinc-500 opacity-0 transition-opacity duration-150 [&.htmx-request]:visible [&.htmx-request]:opacity-100">处理中……</span>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div id="notify-{{ track.provider }}-{{ track.id }}" class="shrink-0"></div>
+
+  {% if loop.last %}
+    {% match next_url %}
+      {% when Some with (_) %}
+      <span class="search-more-indicator invisible text-sm text-zinc-500 opacity-0 transition-opacity duration-150 [&.htmx-request]:visible [&.htmx-request]:opacity-100">
+        加载更多……
+      </span>
+      {% when None %}
+    {% endmatch %}
+  {% endif %}
+</article>

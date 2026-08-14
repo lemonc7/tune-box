@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    INSERT INTO song_artists (song_id, artist)\n                    VALUES (?, ?)\n                    ON CONFLICT(song_id, artist) DO NOTHING\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "d5447597f8167956071fe81e7785cf43d52635ea6e4bb389faf76597e88244f8"
+}
