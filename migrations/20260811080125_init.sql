@@ -59,20 +59,15 @@ CREATE TABLE songs (
 );
 
 CREATE TABLE song_artists (
-    id INTEGER PRIMARY KEY,
-
     song_id INTEGER NOT NULL,
     artist TEXT NOT NULL,
-    UNIQUE(song_id, artist),
+    PRIMARY KEY(song_id, artist),
 
     FOREIGN KEY(song_id) REFERENCES songs(id) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE INDEX idx_downloads_status_retry_created
     ON downloads(status, next_retry_at, created_at, id);
--- 按歌名查询
-CREATE INDEX idx_songs_name 
-    ON songs(name);
 -- 同步曲库使用
 CREATE INDEX idx_songs_scan_token 
     ON songs(scan_token);
@@ -80,6 +75,3 @@ CREATE INDEX idx_songs_scan_token
 CREATE UNIQUE INDEX idx_songs_download_id
     ON songs(download_id)
     WHERE download_id IS NOT NULL;
--- 查询歌曲对应的歌手，按id排序
-CREATE INDEX idx_song_artists_song_id_id
-    ON song_artists(song_id, id);

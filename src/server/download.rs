@@ -56,7 +56,9 @@ impl Downloader {
         &self.dir
     }
 
+    // 移除临时文件
     pub async fn remove_task_files(&self, task_id: i64) -> Result<(), DownloadError> {
+        // 移除下载临时文件
         let part = self.dir.join(format!(".download-{task_id}.part"));
         remove_if_exists(&part).await?;
 
@@ -66,6 +68,7 @@ impl Downloader {
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(error.into()),
         };
+        // 移除tag临时文件
         while let Some(entry) = entries.next_entry().await? {
             if entry
                 .file_name()

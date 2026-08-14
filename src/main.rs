@@ -44,8 +44,9 @@ use crate::{
         assets::assets,
         handler::{
             cancel_download, create_download, delete_download, delete_song, download_card,
-            downloads, health_check, home, library, library_items, more_downloads, pause_download,
-            resume_download, retry_download, search, stream_preview, sync_library,
+            downloads, health_check, home, library, library_items, more_downloads,
+            more_search_results, pause_download, resume_download, retry_download, search,
+            stream_preview, sync_library,
         },
         state::AppState,
     },
@@ -56,7 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // 初始化日志系统
     init_tracing();
 
-    let config = load_config("config.toml")?;
+    let config = load_config("./config/config.toml")?;
     run(config).await
 }
 
@@ -72,6 +73,7 @@ async fn run(config: Config) -> Result<(), Box<dyn Error>> {
     // 音频下载不设置总超时，避免大文件被中途取消
     let download_client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(config.server.download_read_timeout))
         .build()?;
 
     let kw = KuwoProvider::new(
@@ -95,7 +97,7 @@ async fn run(config: Config) -> Result<(), Box<dyn Error>> {
         providers,
         downloader,
         download_client,
-        Embedder::new(api_client),
+        Embedder::new(Duration::from_secs(config.server.http_timeout))?,
     ));
 
     let (manager, manager_handle) = Manager::new(
@@ -212,6 +214,7 @@ fn build_router(config: &Server, state: AppState) -> Router {
     let dynamic_routes = Router::new()
         .route("/", get(home))
         .route("/search", get(search))
+        .route("/search/more", get(more_search_results))
         .route("/preview", get(stream_preview))
         .route("/downloads", get(downloads).post(create_download))
         .route("/downloads/more", get(more_downloads))

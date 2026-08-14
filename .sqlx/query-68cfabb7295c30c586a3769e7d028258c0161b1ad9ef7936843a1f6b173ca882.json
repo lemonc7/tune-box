@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE downloads\n            SET status = 'downloaded',\n                next_retry_at = NULL,\n                error_message = ?,\n                finished_at = NULL,\n                updated_at = CURRENT_TIMESTAMP\n            WHERE id = ?\n              AND status = 'tagging'\n              AND version = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "68cfabb7295c30c586a3769e7d028258c0161b1ad9ef7936843a1f6b173ca882"
+}

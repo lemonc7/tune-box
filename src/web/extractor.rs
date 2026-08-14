@@ -66,9 +66,11 @@ impl IntoResponse for AppError {
             AppError::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
             AppError::NotFound => (StatusCode::NOT_FOUND, "请求的内容不存在".to_owned()),
             AppError::Conflict(message) => (StatusCode::CONFLICT, message),
-            AppError::Service(error @ ServiceError::UnsupportedDownloadQuality(_)) => {
-                (StatusCode::BAD_REQUEST, error.to_string())
-            }
+            AppError::Service(
+                error @ (ServiceError::InvalidRequest(_)
+                | ServiceError::InvalidProvider
+                | ServiceError::UnsupportedDownloadQuality(_)),
+            ) => (StatusCode::BAD_REQUEST, error.to_string()),
             AppError::Service(error) => {
                 tracing::error!(
                   error = ?error,

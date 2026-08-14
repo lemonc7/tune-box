@@ -39,22 +39,22 @@ pub async fn home(State(s): State<AppState>) -> HtmlTemplate<SearchPageTemplate>
 
 pub async fn search(
     State(s): State<AppState>,
-    headers: HeaderMap,
     ValidateQuery(req): ValidateQuery<SearchRequest>,
-) -> Result<Response, AppError> {
+) -> Result<HtmlTemplate<SearchResultsTemplate>, AppError> {
     let result = s.service.search(req).await?;
-
     let next_url = next_search_url(&result);
-    let load_more = headers
-        .get("HX-Trigger")
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("search-more-"));
 
-    if load_more {
-        return Ok(HtmlTemplate(TrackListTemplate { result, next_url }).into_response());
-    }
+    Ok(HtmlTemplate(SearchResultsTemplate { result, next_url }))
+}
 
-    Ok(HtmlTemplate(SearchResultsTemplate { result, next_url }).into_response())
+pub async fn more_search_results(
+    State(s): State<AppState>,
+    ValidateQuery(req): ValidateQuery<SearchRequest>,
+) -> Result<HtmlTemplate<TrackListTemplate>, AppError> {
+    let result = s.service.search(req).await?;
+    let next_url = next_search_url(&result);
+
+    Ok(HtmlTemplate(TrackListTemplate { result, next_url }))
 }
 
 pub async fn stream_preview(
@@ -98,30 +98,7 @@ pub async fn create_download(
     State(state): State<AppState>,
     ValidateForm(req): ValidateForm<CreateDownloadRequest>,
 ) -> Result<Response, AppError> {
-    let artists = req
-        .artists
-        .into_iter()
-        .map(|s| s.trim().to_owned())
-        .filter(|artist| !artist.is_empty())
-        .collect::<Vec<_>>();
-
-    if artists.is_empty() {
-        return Err(AppError::BadRequest("歌曲歌手不能为空".to_owned()));
-    }
-
-    let request = CreateDownloadRequest {
-        provider: req.provider,
-        track_id: req.track_id,
-        quality: req.quality,
-        name: req.name.trim().to_owned(),
-        artists,
-        album: req.album.trim().to_owned(),
-        album_artist: req.album_artist.trim().to_owned(),
-        date: req.date.trim().to_owned(),
-        cover_url: req.cover_url.trim().to_owned(),
-    };
-
-    let created = state.service.create_download(request).await?;
+    let created = state.service.create_download(req).await?;
 
     let message = if created.is_some() {
         state.manager.wake().await?;
@@ -308,5 +285,5 @@ fn next_search_url(result: &SearchResult) -> Option<String> {
         .append_pair("page", &(result.page + 1).to_string())
         .append_pair("limit", &result.limit.to_string())
         .finish();
-    Some(format!("/search?{query}"))
+    Some(format!("/search/more?{query}"))
 }

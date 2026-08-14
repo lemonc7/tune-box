@@ -1,9 +1,12 @@
 use async_trait::async_trait;
+use futures_util::{StreamExt, stream};
 use reqwest::Url;
 use serde::{Deserialize, Deserializer, de::DeserializeOwned};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 
 use crate::{
     error::ProviderError,
@@ -17,12 +20,25 @@ use crate::{
 const USER_AGENT: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36";
 const COVER_URL: &str = "https://img3.kuwo.cn/star/albumcover/500/";
+const ALBUM_INFO_CONCURRENCY: usize = 6;
+const MAX_ALBUM_INFO_PER_SEARCH: usize = 30;
+const ALBUM_CACHE_CAPACITY: usize = 1024;
+const ALBUM_INFO_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+const ALBUM_CACHE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+const ALBUM_CACHE_ERROR_TTL: Duration = Duration::from_secs(5 * 60);
 
 pub struct KuwoProvider {
     client: reqwest::Client,
     search_url: String,
     resolve_url: String,
     lyric_url: String,
+    album_cache: RwLock<HashMap<String, CachedAlbumInfo>>,
+}
+
+#[derive(Clone)]
+struct CachedAlbumInfo {
+    value: (String, String),
+    expires_at: Instant,
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,6 +121,7 @@ impl KuwoProvider {
             search_url,
             resolve_url,
             lyric_url,
+            album_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -140,6 +157,46 @@ impl KuwoProvider {
         let info: AlbumInfo = self.get_json(url.as_str()).await?;
 
         Ok((info.date.trim().to_string(), info.artist.trim().to_string()))
+    }
+
+    async fn album_info(&self, album_id: &str) -> (String, String) {
+        let now = Instant::now();
+        if let Some(cached) = self.album_cache.read().await.get(album_id)
+            && cached.expires_at > now
+        {
+            return cached.value.clone();
+        }
+
+        let (value, ttl) =
+            match tokio::time::timeout(ALBUM_INFO_REQUEST_TIMEOUT, self.fetch_album_info(album_id))
+                .await
+            {
+                Ok(Ok(value)) => (value, ALBUM_CACHE_TTL),
+                Ok(Err(error)) => {
+                    tracing::debug!(album_id, %error, "获取专辑信息失败，暂时使用搜索结果元数据");
+                    ((String::new(), String::new()), ALBUM_CACHE_ERROR_TTL)
+                }
+                Err(_) => {
+                    tracing::debug!(album_id, "获取专辑信息超时，暂时使用搜索结果元数据");
+                    ((String::new(), String::new()), ALBUM_CACHE_ERROR_TTL)
+                }
+            };
+
+        let mut cache = self.album_cache.write().await;
+        cache.retain(|_, cached| cached.expires_at > now);
+        if cache.len() >= ALBUM_CACHE_CAPACITY
+            && let Some(key) = cache.keys().next().cloned()
+        {
+            cache.remove(&key);
+        }
+        cache.insert(
+            album_id.to_owned(),
+            CachedAlbumInfo {
+                value: value.clone(),
+                expires_at: now + ttl,
+            },
+        );
+        value
     }
 }
 
@@ -183,21 +240,25 @@ impl Provider for KuwoProvider {
         }
 
         let resp: SearchResponse = self.get_json(url.as_str()).await?;
-        let mut album_infos = HashMap::new();
-        // 提前收集时间和艺人名称
-        for item in &resp.abs_list {
-            if item.album_id.is_empty() || album_infos.contains_key(&item.album_id) {
-                continue;
-            }
-            match self.fetch_album_info(&item.album_id).await {
-                Ok(info) => {
-                    album_infos.insert(item.album_id.clone(), info);
-                }
-                Err(_) => {
-                    album_infos.insert(item.album_id.clone(), ("".to_string(), "".to_string()));
-                }
-            }
-        }
+        // 同一页只请求一次相同专辑，并以有限并发补充发布时间和专辑艺人。
+        let mut seen_album_ids = HashSet::new();
+        let album_ids = resp
+            .abs_list
+            .iter()
+            .map(|item| item.album_id.trim())
+            .filter(|album_id| !album_id.is_empty())
+            .filter(|album_id| seen_album_ids.insert((*album_id).to_owned()))
+            .take(MAX_ALBUM_INFO_PER_SEARCH)
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        let album_infos = stream::iter(album_ids)
+            .map(|album_id| async move {
+                let info = self.album_info(&album_id).await;
+                (album_id, info)
+            })
+            .buffer_unordered(ALBUM_INFO_CONCURRENCY)
+            .collect::<HashMap<_, _>>()
+            .await;
 
         let mut tracks = Vec::with_capacity(resp.abs_list.len());
         for item in resp.abs_list {

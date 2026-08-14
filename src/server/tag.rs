@@ -1,4 +1,9 @@
-use std::{io::Cursor, path::Path};
+use std::{
+    io::{self, Cursor},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    path::Path,
+    time::Duration,
+};
 
 use futures_util::StreamExt;
 use lofty::{
@@ -8,7 +13,11 @@ use lofty::{
     probe::Probe,
     tag::{ItemKey, ItemValue, Tag, TagItem},
 };
-use reqwest::Url;
+use reqwest::{
+    Url,
+    dns::{Addrs, Name, Resolve, Resolving},
+    redirect,
+};
 
 use crate::{error::TagError, shared::music::Metadata};
 
@@ -16,6 +25,7 @@ const MAX_COVER_BYTES: usize = 2 * 1024 * 1024;
 
 pub struct Embedder {
     client: reqwest::Client,
+    dns_timeout: Duration,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -25,8 +35,31 @@ pub struct FlacInfo {
 }
 
 impl Embedder {
-    pub fn new(client: reqwest::Client) -> Self {
-        Self { client }
+    pub fn new(timeout: Duration) -> Result<Self, reqwest::Error> {
+        let dns_timeout = timeout.min(Duration::from_secs(10));
+        // 封面地址来自客户端元数据。禁用系统代理，并在真正建立连接的 DNS
+        // 解析器中只返回公网地址，避免 DNS 重绑定绕过预检查。
+        let client = reqwest::Client::builder()
+            .timeout(timeout)
+            .read_timeout(timeout)
+            .redirect(redirect::Policy::custom(|attempt| {
+                if attempt.previous().len() >= 5 {
+                    attempt.error("封面图重定向次数过多")
+                } else if has_safe_url_destination(attempt.url()) {
+                    attempt.follow()
+                } else {
+                    attempt.stop()
+                }
+            }))
+            .no_proxy()
+            .dns_resolver(PublicDnsResolver {
+                timeout: dns_timeout,
+            })
+            .build()?;
+        Ok(Self {
+            client,
+            dns_timeout,
+        })
     }
 
     pub async fn embed_flac(
@@ -127,9 +160,7 @@ impl Embedder {
         }
 
         let url = Url::parse(cover_url).map_err(|_| TagError::InvalidCoverUrl)?;
-        if !matches!(url.scheme(), "http" | "https") {
-            return Err(TagError::InvalidCoverUrl);
-        }
+        validate_public_url(&url, self.dns_timeout).await?;
 
         let resp = self.client.get(url.as_str()).send().await?;
         let status = resp.status();
@@ -177,6 +208,122 @@ impl Embedder {
 
         Ok(info)
     }
+}
+
+#[derive(Clone, Copy)]
+struct PublicDnsResolver {
+    timeout: Duration,
+}
+
+impl Resolve for PublicDnsResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let host = name.as_str().to_owned();
+        let timeout = self.timeout;
+        Box::pin(async move {
+            let addresses =
+                tokio::time::timeout(timeout, tokio::net::lookup_host((host.as_str(), 0)))
+                    .await
+                    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "解析封面图域名超时"))??;
+            let addresses = addresses
+                .filter(|address| is_public_ip(address.ip()))
+                .collect::<Vec<_>>();
+            if addresses.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "目标域名没有可用的公网地址",
+                )
+                .into());
+            }
+            Ok(Box::new(addresses.into_iter()) as Addrs)
+        })
+    }
+}
+
+async fn validate_public_url(url: &Url, timeout: Duration) -> Result<(), TagError> {
+    if !has_safe_url_destination(url) {
+        return Err(TagError::InvalidCoverUrl);
+    }
+
+    let port = url
+        .port_or_known_default()
+        .ok_or(TagError::InvalidCoverUrl)?;
+    match url.host().ok_or(TagError::InvalidCoverUrl)? {
+        url::Host::Ipv4(address) => {
+            if !is_public_ip(IpAddr::V4(address)) {
+                return Err(TagError::InvalidCoverUrl);
+            }
+        }
+        url::Host::Ipv6(address) => {
+            if !is_public_ip(IpAddr::V6(address)) {
+                return Err(TagError::InvalidCoverUrl);
+            }
+        }
+        url::Host::Domain(host) => {
+            let addresses = tokio::time::timeout(timeout, tokio::net::lookup_host((host, port)))
+                .await
+                .map_err(|_| {
+                    TagError::ResolveCoverHost(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "解析封面图域名超时",
+                    ))
+                })?
+                .map_err(TagError::ResolveCoverHost)?
+                .collect::<Vec<SocketAddr>>();
+            if addresses.is_empty() || addresses.iter().any(|address| !is_public_ip(address.ip())) {
+                return Err(TagError::InvalidCoverUrl);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn has_safe_url_destination(url: &Url) -> bool {
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return false;
+    }
+
+    match url.host() {
+        Some(url::Host::Ipv4(address)) => is_public_ip(IpAddr::V4(address)),
+        Some(url::Host::Ipv6(address)) => is_public_ip(IpAddr::V6(address)),
+        Some(url::Host::Domain(host)) => !host.eq_ignore_ascii_case("localhost"),
+        None => false,
+    }
+}
+
+fn is_public_ip(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(address) => is_public_ipv4(address),
+        IpAddr::V6(address) => is_public_ipv6(address),
+    }
+}
+
+fn is_public_ipv4(address: Ipv4Addr) -> bool {
+    let [a, b, c, _] = address.octets();
+    !(a == 0
+        || a == 10
+        || a == 127
+        || (a == 100 && (64..=127).contains(&b))
+        || (a == 169 && b == 254)
+        || (a == 172 && (16..=31).contains(&b))
+        || (a == 192 && b == 0 && c == 0)
+        || (a == 192 && b == 0 && c == 2)
+        || (a == 192 && b == 168)
+        || (a == 198 && (b == 18 || b == 19))
+        || (a == 198 && b == 51 && c == 100)
+        || (a == 203 && b == 0 && c == 113)
+        || a >= 224)
+}
+
+fn is_public_ipv6(address: Ipv6Addr) -> bool {
+    if let Some(mapped) = address.to_ipv4_mapped() {
+        return is_public_ipv4(mapped);
+    }
+    let segments = address.segments();
+    // 只允许 2000::/3 全球单播，并排除文档地址 2001:db8::/32。
+    (segments[0] & 0xe000) == 0x2000 && !(segments[0] == 0x2001 && segments[1] == 0x0db8)
 }
 
 fn artists_from_tag(tag: &Tag) -> Vec<String> {
@@ -237,5 +384,41 @@ mod tests {
             artists_from_tag(&tag),
             ["artist one; artist two", "artist three"]
         );
+    }
+
+    #[test]
+    fn rejects_non_public_cover_addresses() {
+        for address in [
+            "127.0.0.1",
+            "10.0.0.1",
+            "100.64.0.1",
+            "169.254.1.1",
+            "172.16.0.1",
+            "192.168.0.1",
+            "224.0.0.1",
+            "::1",
+            "fc00::1",
+            "fe80::1",
+            "2001:db8::1",
+        ] {
+            assert!(!is_public_ip(address.parse().unwrap()), "{address}");
+        }
+        for address in ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"] {
+            assert!(is_public_ip(address.parse().unwrap()), "{address}");
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_private_literal_cover_urls_before_requesting_them() {
+        for value in [
+            "http://127.0.0.1/cover.jpg",
+            "http://169.254.169.254/latest/meta-data",
+            "http://[::1]/cover.jpg",
+        ] {
+            assert!(matches!(
+                validate_public_url(&Url::parse(value).unwrap(), Duration::from_secs(1)).await,
+                Err(TagError::InvalidCoverUrl)
+            ));
+        }
     }
 }

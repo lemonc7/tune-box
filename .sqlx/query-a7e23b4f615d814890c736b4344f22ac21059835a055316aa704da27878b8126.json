@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM songs WHERE scan_token != ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "a7e23b4f615d814890c736b4344f22ac21059835a055316aa704da27878b8126"
+}

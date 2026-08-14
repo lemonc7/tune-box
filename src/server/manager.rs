@@ -239,7 +239,8 @@ impl Manager {
         // 检查并发槽位
         while workers.len() < self.max_concurrent {
             // 从数据库领取任务
-            let Some(task) = self.repository.claim_next().await? else {
+            let running_ids = running_tokens.keys().copied().collect::<Vec<_>>();
+            let Some(task) = self.repository.claim_next(&running_ids).await? else {
                 break;
             };
 
@@ -349,5 +350,73 @@ impl ManagerHandle {
             .send(ManagerCommand::Shutdown)
             .await
             .map_err(|_| ManagerError::ManagerStopped)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, sync::Arc, time::Duration};
+
+    use tokio::task::JoinSet;
+    use tokio_util::sync::CancellationToken;
+
+    use super::Manager;
+    use crate::{
+        error::ServiceError,
+        server::{db, download::Downloader, service::Service, tag::Embedder},
+        shared::{download::DownloadStatus, music::Metadata},
+    };
+
+    #[tokio::test]
+    async fn fill_workers_does_not_spawn_a_second_worker_for_the_same_task() {
+        let pool = db::connect_memory().await.unwrap();
+        let repository = db::Repository::new(pool);
+        let metadata = Metadata {
+            name: "song".to_owned(),
+            artists: vec!["artist".to_owned()],
+            album: String::new(),
+            album_artist: String::new(),
+            date: String::new(),
+            cover_url: String::new(),
+        };
+        let running_id = repository
+            .add_download("kuwo", "1", "flac", &metadata)
+            .await
+            .unwrap()
+            .unwrap();
+        let next_id = repository
+            .add_download("kuwo", "2", "flac", &metadata)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let client = reqwest::Client::new();
+        let service = Arc::new(Service::new(
+            repository.clone(),
+            HashMap::new(),
+            Downloader::new(client, std::env::temp_dir(), 1024),
+            reqwest::Client::new(),
+            Embedder::new(Duration::from_secs(30)).unwrap(),
+        ));
+        let (manager, _handle) = Manager::new(repository.clone(), service, 2);
+
+        let mut workers = JoinSet::<(i64, Result<(), ServiceError>)>::new();
+        let old_worker = workers.spawn(async move { std::future::pending().await });
+        let mut running_tokens = HashMap::from([(running_id, CancellationToken::new())]);
+        let mut worker_tasks = HashMap::from([(old_worker.id(), (running_id, 0))]);
+
+        manager
+            .fill_workers(&mut workers, &mut running_tokens, &mut worker_tasks)
+            .await
+            .unwrap();
+
+        let running = repository.get_download(running_id).await.unwrap().unwrap();
+        assert_eq!(running.status, DownloadStatus::Pending);
+        assert_eq!(running.version, 0);
+        assert!(running_tokens.contains_key(&running_id));
+        assert!(running_tokens.contains_key(&next_id));
+
+        workers.abort_all();
+        while workers.join_next().await.is_some() {}
     }
 }

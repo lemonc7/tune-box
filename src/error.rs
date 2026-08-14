@@ -51,6 +51,8 @@ pub enum DownloadError {
 pub enum TagError {
     #[error("无效封面图")]
     InvalidCoverUrl,
+    #[error("解析封面图域名失败: {0}")]
+    ResolveCoverHost(#[source] std::io::Error),
     #[error("http请求失败: {0}")]
     Http(#[from] reqwest::Error),
     #[error("请求封面图响应错误: {0}")]
@@ -83,6 +85,8 @@ pub enum DatabaseError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
+    #[error("请求参数无效: {0}")]
+    InvalidRequest(String),
     #[error("无效的provider")]
     InvalidProvider,
     #[error("暂不支持下载该音质: {0}，当前只允许 FLAC")]

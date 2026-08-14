@@ -1,3 +1,5 @@
+use sqlx::types::Json;
+
 use crate::shared::{
     download::{Download, DownloadStatus},
     music::Metadata,
@@ -6,6 +8,7 @@ use crate::shared::{
 use super::Repository;
 
 impl Repository {
+    // 添加下载任务
     pub async fn add_download(
         &self,
         provider: &str,
@@ -13,8 +16,7 @@ impl Repository {
         quality: &str,
         metadata: &Metadata,
     ) -> Result<Option<i64>, sqlx::Error> {
-        let metadata =
-            serde_json::to_string(metadata).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        let metadata = Json(metadata);
 
         sqlx::query_scalar!(
             r#"
@@ -38,6 +40,7 @@ impl Repository {
         .await
     }
 
+    // 获取下载历史
     pub async fn list_downloads(
         &self,
         before_id: i64,
@@ -71,6 +74,7 @@ impl Repository {
         .await
     }
 
+    // 查询单个下载任务
     pub async fn get_download(&self, id: i64) -> Result<Option<Download>, sqlx::Error> {
         sqlx::query_as!(
             Download,
@@ -98,7 +102,10 @@ impl Repository {
     }
 
     // 原子领取下一个任务，优先领取下载好的准备打标签的任务
-    pub async fn claim_next(&self) -> Result<Option<Download>, sqlx::Error> {
+    pub async fn claim_next(&self, running_ids: &[i64]) -> Result<Option<Download>, sqlx::Error> {
+        // 暂停/取消后的旧 Worker 可能尚未完全退出。把当前进程仍在运行的任务
+        // 排除在领取范围外，避免同一个任务的两个 Worker 同时操作同一临时文件。
+        let running_ids = Json(running_ids);
         sqlx::query_as!(
             Download,
             r#"
@@ -115,6 +122,10 @@ impl Repository {
             WHERE id = (
                 SELECT id FROM downloads
                 WHERE status IN ('pending', 'downloaded')
+                  AND id NOT IN (
+                      SELECT CAST(value AS INTEGER)
+                      FROM json_each(?)
+                  )
                   AND (
                       next_retry_at IS NULL
                       OR julianday(next_retry_at) <= julianday('now')
@@ -143,6 +154,7 @@ impl Repository {
                 path,
                 error_message
             "#,
+            running_ids,
         )
         .fetch_optional(&self.pool)
         .await
@@ -265,5 +277,40 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(second.iter().map(|row| row.id).collect::<Vec<_>>(), [1]);
+    }
+
+    #[tokio::test]
+    async fn claim_skips_tasks_with_workers_that_are_still_exiting() {
+        let pool = db::connect_memory().await.unwrap();
+        let repository = Repository::new(pool);
+        let metadata = Metadata {
+            name: "song".to_owned(),
+            artists: vec!["artist".to_owned()],
+            album: String::new(),
+            album_artist: String::new(),
+            date: String::new(),
+            cover_url: String::new(),
+        };
+
+        let first_id = repository
+            .add_download("kuwo", "1", "flac", &metadata)
+            .await
+            .unwrap()
+            .unwrap();
+        let second_id = repository
+            .add_download("kuwo", "2", "flac", &metadata)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let claimed = repository.claim_next(&[first_id]).await.unwrap().unwrap();
+        assert_eq!(claimed.id, second_id);
+
+        let first = repository.get_download(first_id).await.unwrap().unwrap();
+        assert_eq!(
+            first.status,
+            crate::shared::download::DownloadStatus::Pending
+        );
+        assert_eq!(first.version, 0);
     }
 }

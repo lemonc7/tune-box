@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO downloads (\n                provider,\n                track_id,\n                quality,\n                metadata\n            )\n            VALUES (?, ?, ?, ?)\n            ON CONFLICT(provider, track_id, quality)\n            DO NOTHING\n            RETURNING id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "downloads",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "33b29193f495981dbd131e811ba06ca177cb0b992efea317b552e62183b4ef1f"
+}

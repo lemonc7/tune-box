@@ -66,7 +66,7 @@ impl Repository {
         Ok(result.rows_affected() == 1)
     }
 
-    /// pause/cancel/shutdown 引起的中断不会消耗重试次数。
+    // pause/cancel/shutdown 引起的中断不会消耗重试次数。
     pub async fn requeue_interrupted_download(
         &self,
         id: i64,
@@ -244,6 +244,7 @@ impl Repository {
         Ok(result.rows_affected() == 1)
     }
 
+    // 恢复数据库中执行到一半的下载任务状态
     pub async fn recover_interrupted(&self) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!(
             r#"
@@ -265,7 +266,7 @@ impl Repository {
         Ok(result.rows_affected())
     }
 
-    // 恢复一个异常退出的 Worker；版本条件防止旧 Worker 覆盖后来重新领取的任务。
+    // 恢复一个异常退出的Worker；版本条件防止旧Worker覆盖后来重新领取的任务。
     pub async fn recover_worker(
         &self,
         id: i64,

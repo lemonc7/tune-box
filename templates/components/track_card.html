@@ -2,7 +2,6 @@
   {% if loop.last %}
     {% match next_url %}
       {% when Some with (url) %}
-      id="search-more-{{ track.provider }}-{{ track.id }}"
       hx-get="{{ url }}"
       hx-trigger="revealed"
       hx-swap="afterend"

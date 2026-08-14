@@ -1,0 +1,17 @@
+.git/
+.github/
+.vscode/
+
+target/
+data/
+downloads/
+
+config.toml
+.env
+.env.*
+
+.dockerignore
+.gitignore
+Dockerfile
+README.md
+config.example.toml

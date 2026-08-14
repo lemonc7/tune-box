@@ -14,12 +14,8 @@ pub(crate) struct ScannedSong {
     pub artists: Vec<String>,
 }
 
-pub(crate) struct SongFile {
-    pub path: String,
-}
-
 impl Repository {
-    /// 原子写入曲库数据并完成下载任务。
+    // 原子写入曲库数据并完成下载任务。
     pub async fn complete_with_song(
         &self,
         id: i64,
@@ -29,8 +25,11 @@ impl Repository {
         size: i64,
         metadata: &Metadata,
     ) -> Result<bool, sqlx::Error> {
+        // 使用事务，出错统一回滚
+        // 事务实现了Drop trait，离开作用域会自动rollback(除了使用commit)
         let mut tx = self.pool.begin().await?;
 
+        // 标记下载完成
         let updated = sqlx::query!(
             r#"
             UPDATE downloads
@@ -53,10 +52,10 @@ impl Repository {
         .await?;
 
         if updated.rows_affected() == 0 {
-            tx.rollback().await?;
             return Ok(false);
         }
 
+        // 插入音乐
         let song_id = sqlx::query_scalar!(
             r#"
             INSERT INTO songs (path, name, extension, size, download_id)
@@ -78,10 +77,12 @@ impl Repository {
         .fetch_one(&mut *tx)
         .await?;
 
+        // 先删除歌曲对应的歌手，再插入新的，防止旧数据残留
         sqlx::query!("DELETE FROM song_artists WHERE song_id = ?", song_id)
             .execute(&mut *tx)
             .await?;
 
+        // 插入歌手
         for artist in &metadata.artists {
             let artist = artist.trim();
             if artist.is_empty() {
@@ -101,10 +102,12 @@ impl Repository {
             .await?;
         }
 
+        // 提交
         tx.commit().await?;
         Ok(true)
     }
 
+    // 获取歌曲记录，支持动态查询
     pub async fn list_songs(
         &self,
         keywords: &[&str],
@@ -125,39 +128,43 @@ impl Repository {
                             SELECT sa.artist
                             FROM song_artists AS sa
                             WHERE sa.song_id = s.id
-                            ORDER BY sa.id
+                            ORDER BY sa.artist
                         ) AS ordered
                     ),
                     '[]'
                 ) AS artists
-          FROM songs AS s
-          WHERE s.id <
-          "#,
+            FROM songs AS s
+            WHERE s.id <
+            "#,
         );
         query.push_bind(before_id);
 
-        for keyword in keywords
+        let keywords = keywords
             .iter()
             .map(|k| k.trim())
             .filter(|k| !k.is_empty())
             .take(MAX_SEARCH_KEYWORDS)
-        {
+            // SQLite 内置 lower() 只处理 ASCII；常量在 Rust 侧转换一次，避免每行重复调用。
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>();
+
+        for keyword in &keywords {
             query.push(
                 r#"
                 AND (
-                    instr(lower(s.name), lower(
+                    instr(lower(s.name),
                 "#,
             );
             query.push_bind(keyword);
 
             query.push(
                 r#"
-                )) > 0
+                ) > 0
                 OR EXISTS (
                     SELECT 1
                     FROM song_artists AS sa
                     WHERE sa.song_id = s.id
-                      AND instr(lower(sa.artist), lower(
+                      AND instr(lower(sa.artist),
                 "#,
             );
 
@@ -165,10 +172,10 @@ impl Repository {
 
             query.push(
                 r#"
-                    )) > 0
+                    ) > 0
                   )
                 )
-              "#,
+                "#,
             );
         }
 
@@ -192,6 +199,7 @@ impl Repository {
             .collect()
     }
 
+    // 获取歌曲总数
     pub async fn count_songs(&self) -> Result<i64, sqlx::Error> {
         sqlx::query_scalar!(
             r#"
@@ -203,6 +211,7 @@ impl Repository {
         .await
     }
 
+    // 同步本地曲库
     pub(crate) async fn sync_library(
         &self,
         songs: &[ScannedSong],
@@ -211,6 +220,7 @@ impl Repository {
         let mut tx = self.pool.begin().await?;
 
         for song in songs {
+            // 先插入/更新歌曲
             let song_id = sqlx::query_scalar!(
                 r#"
                 INSERT INTO songs (
@@ -243,6 +253,7 @@ impl Repository {
             .fetch_one(&mut *tx)
             .await?;
 
+            // 删除歌手再添加
             sqlx::query!("DELETE FROM song_artists WHERE song_id = ?", song_id)
                 .execute(&mut *tx)
                 .await?;
@@ -267,6 +278,7 @@ impl Repository {
             }
         }
 
+        // 先删除不存在的歌曲对应的下载记录(对比scan_token)
         sqlx::query!(
             r#"
             DELETE FROM downloads
@@ -280,6 +292,7 @@ impl Repository {
         .execute(&mut *tx)
         .await?;
 
+        // 删除不存在的歌曲记录
         sqlx::query!("DELETE FROM songs WHERE scan_token != ?", scan_token)
             .execute(&mut *tx)
             .await?;
@@ -287,26 +300,29 @@ impl Repository {
         tx.commit().await
     }
 
-    pub(crate) async fn get_song_file(&self, id: i64) -> Result<Option<SongFile>, sqlx::Error> {
+    pub(crate) async fn get_song_path(&self, id: i64) -> Result<Option<String>, sqlx::Error> {
         Ok(sqlx::query!("SELECT path FROM songs WHERE id = ?", id)
             .fetch_optional(&self.pool)
             .await?
-            .map(|row| SongFile { path: row.path }))
+            .map(|row| row.path))
     }
 
+    // 删除歌曲和对应下载记录
     pub async fn delete_song_with_download(&self, id: i64) -> Result<bool, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
+        // 获取download id
         let row = sqlx::query!("SELECT download_id FROM songs WHERE id = ?", id)
             .fetch_optional(&mut *tx)
             .await?;
         let Some(row) = row else {
-            tx.rollback().await?;
             return Ok(false);
         };
 
+        // 删除歌曲
         sqlx::query!("DELETE FROM songs WHERE id = ?", id)
             .execute(&mut *tx)
             .await?;
+        // 删除记录(如果存在的话)
         if let Some(download_id) = row.download_id {
             sqlx::query!("DELETE FROM downloads WHERE id = ?", download_id)
                 .execute(&mut *tx)

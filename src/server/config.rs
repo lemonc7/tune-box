@@ -18,6 +18,8 @@ pub struct Server {
     #[garde(range(min = 1))]
     pub http_timeout: u64,
     #[garde(range(min = 1))]
+    pub download_read_timeout: u64,
+    #[garde(range(min = 1))]
     pub request_timeout: u64,
     #[garde(length(min = 6))]
     pub mcp_token: String,
@@ -51,6 +53,7 @@ impl Default for Config {
             server: Server {
                 port: 8080,
                 http_timeout: 30,
+                download_read_timeout: 30,
                 request_timeout: 30,
                 mcp_token: String::from("tune_box"),
                 max_bytes: 1024 * 1024 * 100,
@@ -81,4 +84,34 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<Config, String> {
         .validate()
         .map_err(|error| format!("配置文件无效: {error}"))?;
     Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_config_without_download_read_timeout_keeps_working() {
+        let config: Config = toml::from_str(
+            r#"
+                [server]
+                port = 8080
+                http_timeout = 30
+                request_timeout = 30
+                download_read_timeout = 30
+                mcp_token = "tune_box"
+                max_bytes = 104857600
+                max_http_concurrent = 32
+                max_download_concurrent = 3
+
+                [providers.kuwo]
+                search_url = "https://search.kuwo.cn/r.s"
+                resolve_url = "https://mobi.kuwo.cn/mobi.s"
+                lyric_url = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(config.server.download_read_timeout, 30);
+    }
 }

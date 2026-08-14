@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE downloads\n            SET downloaded_bytes = ?,\n                total_bytes = COALESCE(?, total_bytes),\n                updated_at = CURRENT_TIMESTAMP\n            WHERE id = ?\n              AND status = 'downloading'\n              AND version = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "4badc7e6db34ec642748459982c9b5700e166e380104a0f485afae0db2016aa0"
+}
