@@ -27,7 +27,7 @@ use tower_http::{
     trace::{DefaultOnResponse, TraceLayer},
 };
 use tracing::{Level, info_span};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{EnvFilter, fmt::time::ChronoLocal};
 
 use crate::{
     server::{
@@ -245,8 +245,6 @@ fn build_router(config: &Server, state: AppState) -> Router {
 
     // 静态资源文件
     let static_routes = Router::new().route("/assets/{*path}", get(assets));
-    // 音频流
-    // let media_routes = Router::new().route("/media/{id}", get(stream_song));
 
     let request_id = HeaderName::from_static("x-request-id");
     let trace_request_id = request_id.clone();
@@ -305,11 +303,12 @@ async fn authorize_mcp(
 }
 
 fn init_tracing() {
-    // 项目日志显示到debug，tower_http请求日志显示到info
+    // 默认只显示 info 及以上日志，可通过 RUST_LOG 临时调整。
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("tune_box=debug,tower_http=info"));
+        .unwrap_or_else(|_| EnvFilter::new("tune_box=info,tower_http=info"));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
+        .with_timer(ChronoLocal::rfc_3339())
         // 不显示模块路径
         .with_target(false)
         // 紧凑日志
