@@ -8,6 +8,7 @@ use std::fmt::Write;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+use crate::server::provider::USER_AGENT;
 use crate::{
     error::ProviderError,
     server::{
@@ -17,8 +18,6 @@ use crate::{
     shared::music::{Quality, SearchResult, Track as SearchTrack},
 };
 
-const USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36";
 const COVER_URL: &str = "https://img3.kuwo.cn/star/albumcover/500/";
 const ALBUM_INFO_CONCURRENCY: usize = 6;
 const MAX_ALBUM_INFO_PER_SEARCH: usize = 30;
@@ -29,9 +28,9 @@ const ALBUM_CACHE_ERROR_TTL: Duration = Duration::from_secs(5 * 60);
 
 pub struct KuwoProvider {
     client: reqwest::Client,
-    search_url: String,
-    resolve_url: String,
-    lyric_url: String,
+    search_url: Url,
+    resolve_url: Url,
+    lyric_url: Url,
     album_cache: RwLock<HashMap<String, CachedAlbumInfo>>,
 }
 
@@ -115,24 +114,25 @@ impl KuwoProvider {
         search_url: String,
         resolve_url: String,
         lyric_url: String,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ProviderError> {
+        Ok(Self {
             client,
-            search_url,
-            resolve_url,
-            lyric_url,
+            search_url: parse_config_url(&search_url, "酷我搜索API")?,
+            resolve_url: parse_config_url(&resolve_url, "酷我解析API")?,
+            lyric_url: parse_config_url(&lyric_url, "酷我歌词API")?,
             album_cache: RwLock::new(HashMap::new()),
-        }
+        })
     }
 
-    async fn get_json<T: DeserializeOwned>(&self, url: &str) -> Result<T, ProviderError> {
+    async fn get_json<T: DeserializeOwned>(&self, url: Url) -> Result<T, ProviderError> {
         let resp = self
             .client
             .get(url)
             .header("User-Agent", USER_AGENT)
             .header("Referer", "https://www.kuwo.cn/")
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
         let data = resp.json::<T>().await?;
 
         Ok(data)
@@ -140,8 +140,7 @@ impl KuwoProvider {
 
     // 获取发布时间和专辑艺人
     async fn fetch_album_info(&self, album_id: &str) -> Result<(String, String), ProviderError> {
-        let mut url = Url::parse(&self.search_url)
-            .map_err(|e| ProviderError::InvalidArgument(format!("解析搜索url: {e}")))?;
+        let mut url = self.search_url.clone();
         {
             let mut params = url.query_pairs_mut();
             params
@@ -154,7 +153,7 @@ impl KuwoProvider {
                 .append_pair("encoding", "utf8");
         }
 
-        let info: AlbumInfo = self.get_json(url.as_str()).await?;
+        let info: AlbumInfo = self.get_json(url).await?;
 
         Ok((info.date.trim().to_string(), info.artist.trim().to_string()))
     }
@@ -221,8 +220,7 @@ impl Provider for KuwoProvider {
                 "limit必须大于等于1".to_string(),
             ));
         }
-        let mut url = Url::parse(&self.search_url)
-            .map_err(|e| ProviderError::InvalidArgument(format!("解析搜索url: {e}")))?;
+        let mut url = self.search_url.clone();
 
         {
             let mut params = url.query_pairs_mut();
@@ -239,7 +237,7 @@ impl Provider for KuwoProvider {
                 .append_pair("ft", "music");
         }
 
-        let resp: SearchResponse = self.get_json(url.as_str()).await?;
+        let resp: SearchResponse = self.get_json(url).await?;
         // 同一页只请求一次相同专辑，并以有限并发补充发布时间和专辑艺人。
         let mut seen_album_ids = HashSet::new();
         let album_ids = resp
@@ -313,8 +311,7 @@ impl Provider for KuwoProvider {
             return Err(ProviderError::InvalidArgument("空的track id".to_string()));
         }
 
-        let mut url = Url::parse(&self.resolve_url)
-            .map_err(|e| ProviderError::InvalidArgument(format!("解析解析url: {e}")))?;
+        let mut url = self.resolve_url.clone();
         {
             let mut params = url.query_pairs_mut();
             params
@@ -326,7 +323,7 @@ impl Provider for KuwoProvider {
                 .append_pair("br", quality.id);
         }
 
-        let resp: ResolveResponse = self.get_json(url.as_str()).await?;
+        let resp: ResolveResponse = self.get_json(url).await?;
         if resp.data.url.is_empty() {
             return Err(ProviderError::InvalidResponse(
                 "资源下载url为空".to_string(),
@@ -342,15 +339,14 @@ impl Provider for KuwoProvider {
         })
     }
     async fn lyrics(&self, track_id: &str) -> Result<String, ProviderError> {
-        let mut url = Url::parse(&self.lyric_url)
-            .map_err(|e| ProviderError::InvalidArgument(format!("解析歌词url: {e}")))?;
+        let mut url = self.lyric_url.clone();
 
         {
             let mut params = url.query_pairs_mut();
             params.append_pair("musicId", track_id);
         }
 
-        let resp: LyricResponse = self.get_json(url.as_str()).await?;
+        let resp: LyricResponse = self.get_json(url).await?;
         let mut lyrics = String::new();
         for line in resp.data.lines {
             let seconds: f64 = match line.time.parse() {
@@ -387,6 +383,17 @@ static QUALITIES: &[QualitySpec] = &[
         bitrate: 2000,
     },
 ];
+
+fn parse_config_url(value: &str, name: &str) -> Result<Url, ProviderError> {
+    let url = Url::parse(value)
+        .map_err(|error| ProviderError::InvalidArgument(format!("解析{name}地址失败: {error}")))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(ProviderError::InvalidArgument(format!(
+            "{name}只允许HTTP或HTTPS地址"
+        )));
+    }
+    Ok(url)
+}
 
 fn find_quality(id: &str) -> Option<QualitySpec> {
     QUALITIES.iter().copied().find(|q| q.id == id)
@@ -473,7 +480,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{DOWNLOAD_QUALITY_ID, is_valid_album_id, parse_qualities};
+    use super::{DOWNLOAD_QUALITY_ID, is_valid_album_id, parse_config_url, parse_qualities};
+
+    #[test]
+    fn validates_configured_http_urls() {
+        assert!(parse_config_url("https://search.kuwo.cn/r.s", "测试API").is_ok());
+        assert!(parse_config_url("ftp://search.kuwo.cn/r.s", "测试API").is_err());
+        assert!(parse_config_url("not a url", "测试API").is_err());
+    }
 
     #[test]
     fn rejects_missing_album_ids() {

@@ -36,7 +36,7 @@ use crate::{
         download::Downloader,
         manager::Manager,
         mcp::MusicMcp,
-        provider::{Provider, kuwo::KuwoProvider},
+        provider::{Provider, kuwo::KuwoProvider, netease::NeteaseProvider},
         service::Service,
         tag::Embedder,
     },
@@ -81,10 +81,16 @@ async fn run(config: Config) -> Result<(), Box<dyn Error>> {
         config.providers.kuwo.search_url,
         config.providers.kuwo.resolve_url,
         config.providers.kuwo.lyric_url,
-    );
+    )?;
+    let ne = NeteaseProvider::new(
+        api_client.clone(),
+        config.providers.netease.base_url,
+        config.providers.netease.extended_resolve_url,
+    )?;
 
     let mut providers: HashMap<String, Box<dyn Provider>> = HashMap::new();
     providers.insert(kw.id().to_owned(), Box::new(kw));
+    providers.insert(ne.id().to_owned(), Box::new(ne));
 
     let downloader = Downloader::new(
         download_client.clone(),

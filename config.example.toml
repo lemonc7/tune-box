@@ -12,3 +12,7 @@ max_download_concurrent = 3
 search_url = "https://search.kuwo.cn/r.s"
 resolve_url = "https://mobi.kuwo.cn/mobi.s"
 lyric_url = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"
+
+[providers.netease]
+base_url = "http://localhost:3000"
+extended_resolve_url = "https://music-api.gdstudio.xyz/api.php"

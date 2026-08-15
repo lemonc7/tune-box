@@ -1,8 +1,12 @@
+pub mod kuwo;
+pub mod netease;
+
 use async_trait::async_trait;
 
 use crate::{error::ProviderError, server::model::ResolvedResource, shared::music::SearchResult};
 
-pub mod kuwo;
+const USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36";
 
 #[async_trait]
 pub trait Provider: Send + Sync {

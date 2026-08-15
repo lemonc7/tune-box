@@ -1,4 +1,4 @@
-use std::{fs, io, path::Path};
+use std::{fs, path::Path};
 
 use garde::Validate;
 use serde::Deserialize;
@@ -35,6 +35,8 @@ pub struct Server {
 pub struct Providers {
     #[garde(dive)]
     pub kuwo: Kuwo,
+    #[garde(dive)]
+    pub netease: Netease,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -47,36 +49,19 @@ pub struct Kuwo {
     pub lyric_url: String,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: Server {
-                port: 8080,
-                http_timeout: 30,
-                download_read_timeout: 30,
-                request_timeout: 30,
-                mcp_token: String::from("tune_box"),
-                max_bytes: 1024 * 1024 * 100,
-                max_http_concurrent: 32,
-                max_download_concurrent: 3,
-            },
-            providers: Providers {
-                kuwo: Kuwo {
-                    search_url: String::from("https://search.kuwo.cn/r.s"),
-                    resolve_url: String::from("https://mobi.kuwo.cn/mobi.s"),
-                    lyric_url: String::from("https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"),
-                },
-            },
-        }
-    }
+#[derive(Debug, Deserialize, Validate)]
+pub struct Netease {
+    #[garde(url)]
+    pub base_url: String,
+    #[garde(url)]
+    pub extended_resolve_url: String,
 }
 
 pub fn load_config(path: impl AsRef<Path>) -> Result<Config, String> {
-    let config = match fs::read_to_string(path) {
+    let config: Config = match fs::read_to_string(path) {
         Ok(content) => {
             toml::from_str(&content).map_err(|error| format!("读取配置失败：{error}"))?
         }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Config::default(),
         Err(error) => return Err(format!("读取配置文件失败：{error}")),
     };
 
@@ -84,34 +69,4 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<Config, String> {
         .validate()
         .map_err(|error| format!("配置文件无效: {error}"))?;
     Ok(config)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn old_config_without_download_read_timeout_keeps_working() {
-        let config: Config = toml::from_str(
-            r#"
-                [server]
-                port = 8080
-                http_timeout = 30
-                request_timeout = 30
-                download_read_timeout = 30
-                mcp_token = "tune_box"
-                max_bytes = 104857600
-                max_http_concurrent = 32
-                max_download_concurrent = 3
-
-                [providers.kuwo]
-                search_url = "https://search.kuwo.cn/r.s"
-                resolve_url = "https://mobi.kuwo.cn/mobi.s"
-                lyric_url = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"
-            "#,
-        )
-        .unwrap();
-
-        assert_eq!(config.server.download_read_timeout, 30);
-    }
 }
