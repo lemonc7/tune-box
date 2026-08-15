@@ -22,7 +22,7 @@ use reqwest::{
 
 use crate::{error::TagError, server::flac_writer, shared::music::Metadata};
 
-const MAX_COVER_BYTES: usize = 2 * 1024 * 1024;
+const MAX_COVER_BYTES: usize = 8 * 1024 * 1024;
 
 pub struct Embedder {
     client: reqwest::Client,
