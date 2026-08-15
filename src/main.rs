@@ -58,13 +58,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
     init_tracing();
 
     let config = load_config("./config/config.toml")?;
-    run(config).await
+    let pool = db::connect("sqlite://data/tune.db").await?;
+    // 保留一个连接池句柄，在 HTTP 服务和下载管理器都停止后显式关闭数据库。
+    let repository = Repository::new(pool.clone());
+
+    let result = run(config, repository).await;
+
+    // Pool 的 Drop 无法等待连接真正关闭；显式 close 可以让 SQLite 在优雅退出时
+    // 关闭所有连接，并执行最后一次 WAL 清理流程。
+    tracing::info!("正在关闭数据库连接池");
+    pool.close().await;
+    tracing::info!("数据库连接池已关闭");
+
+    result?;
+
+    tracing::info!("服务器已关闭");
+    Ok(())
 }
 
-async fn run(config: Config) -> Result<(), Box<dyn Error>> {
-    let pool = db::connect("sqlite://data/tune.db").await?;
-    let repository = Repository::new(pool);
-
+async fn run(config: Config, repository: Repository) -> Result<(), Box<dyn Error>> {
     // 搜索，解析，歌词和封面等短时间使用总超时
     let api_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(config.server.http_timeout))
@@ -173,7 +185,6 @@ async fn run(config: Config) -> Result<(), Box<dyn Error>> {
       }
     }
 
-    tracing::info!("服务器已关闭");
     Ok(())
 }
 
