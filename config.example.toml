@@ -14,5 +14,5 @@ resolve_url = "https://mobi.kuwo.cn/mobi.s"
 lyric_url = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric"
 
 [providers.netease]
-base_url = "http://localhost:3000"
+base_url = "http://ncm-api:3000"
 extended_resolve_url = "https://music-api.gdstudio.xyz/api.php"
