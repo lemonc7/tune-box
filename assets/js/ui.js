@@ -3,6 +3,7 @@
   const appError = document.querySelector("#app-error");
   const pageCache = new Map();
   const pagePaths = new Set(["/", "/downloads", "/library"]);
+  const cacheablePaths = new Set(["/"]);
 
   const clearError = () => {
     if (appError) appError.replaceChildren();
@@ -42,7 +43,7 @@
   };
 
   const savePage = (path = currentPath) => {
-    if (!content || !pagePaths.has(path)) return;
+    if (!content || !cacheablePaths.has(path)) return;
 
     const clone = content.cloneNode(true);
     snapshotFormState(content, clone);
@@ -63,7 +64,7 @@
   };
 
   if (content && pagePaths.has(currentPath)) {
-    history.replaceState({ tunePageCache: true, path: currentPath }, "", location.href);
+    history.replaceState({ tunePageNavigation: true, path: currentPath }, "", location.href);
 
     document.addEventListener(
       "click",
@@ -86,7 +87,7 @@
 
         clearError();
 
-        if (destination === currentPath) {
+        if (destination === currentPath && cacheablePaths.has(destination)) {
           event.preventDefault();
           event.stopImmediatePropagation();
           return;
@@ -99,7 +100,7 @@
         event.preventDefault();
         event.stopImmediatePropagation();
         restorePage(destination, cached);
-        history.pushState({ tunePageCache: true, path: destination }, "", link.href);
+        history.pushState({ tunePageNavigation: true, path: destination }, "", link.href);
       },
       true,
     );
@@ -107,13 +108,17 @@
     window.addEventListener(
       "popstate",
       (event) => {
-        const destination = event.state?.tunePageCache && pagePath(event.state.path);
+        const destination = event.state?.tunePageNavigation && pagePath(event.state.path);
         const cached = destination && pageCache.get(destination);
-        if (!cached || destination === currentPath) return;
+        if (!destination || destination === currentPath) return;
 
         event.stopImmediatePropagation();
         savePage();
-        restorePage(destination, cached);
+        if (cached) {
+          restorePage(destination, cached);
+        } else {
+          window.location.reload();
+        }
       },
       true,
     );
@@ -125,7 +130,7 @@
       currentPath = pagePath();
       if (pagePaths.has(currentPath)) {
         history.replaceState(
-          { tunePageCache: true, path: currentPath },
+          { tunePageNavigation: true, path: currentPath },
           "",
           location.href,
         );
