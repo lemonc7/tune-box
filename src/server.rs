@@ -1,6 +1,7 @@
 pub mod config;
 pub mod db;
 pub mod download;
+mod flac_writer;
 pub mod manager;
 pub mod mcp;
 pub mod model;

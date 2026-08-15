@@ -1,6 +1,6 @@
 [package]
 name = "tune-box"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.95"
 
@@ -33,7 +33,11 @@ tokio = { version = "1", features = [
 tokio-util = { version = "0.7", features = ["rt"] }
 
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["chrono", "env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = [
+  "chrono",
+  "env-filter",
+  "fmt",
+] }
 
 lofty = "0.25"
 

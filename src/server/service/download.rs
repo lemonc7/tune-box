@@ -229,7 +229,7 @@ impl Service {
             return Ok(());
         }
 
-        // Lofty 使用 spawn_blocking；阻塞任务启动后无法安全强制终止。
+        // FLAC 流式重写使用 spawn_blocking；阻塞任务启动后无法安全强制终止。
         // 从写标签开始进入不可中断区，最终由 status + version 决定是否提交结果。
         let result = async {
             self.embedder

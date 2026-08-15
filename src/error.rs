@@ -63,12 +63,22 @@ pub enum TagError {
     UnsupportedCoverFormat,
     #[error("lofty音乐标签错误: {0}")]
     Lofty(#[from] lofty::error::AllocationError),
+    #[error("编码音乐标签失败: {0}")]
+    TagEncoding(#[from] lofty::error::TagEncodingError),
     #[error("IO错误: {0}")]
     Io(#[from] std::io::Error),
     #[error("解析音频文件失败: {0}")]
     ParseFile(#[from] lofty::error::FileParseError),
     #[error("编码文件失败: {0}")]
     Encoding(#[from] lofty::error::FileEncodingError),
+    #[error("FLAC文件结构无效: {0}")]
+    InvalidFlac(&'static str),
+    #[error("FLAC元数据块超过24位长度限制")]
+    FlacMetadataTooLarge,
+    #[error("标签临时文件路径无效")]
+    InvalidTagPath,
+    #[error("无法创建唯一的标签临时文件")]
+    CreateTagTemp,
     #[error("标签阻塞任务异常结束: {0}")]
     Join(#[from] tokio::task::JoinError),
 }
