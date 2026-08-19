@@ -132,16 +132,16 @@ struct ExtendedResolveResponse {
 impl NeteaseProvider {
     pub fn new(
         client: reqwest::Client,
-        base_url: String,
-        extended_resolve_url: String,
+        base_url: &str,
+        extended_resolve_url: &str,
     ) -> Result<Self, ProviderError> {
-        let mut base_url = parse_config_url(&base_url, "网易云API")?;
+        let mut base_url = parse_config_url(base_url, "网易云API")?;
         if !base_url.path().ends_with('/') {
             let path = format!("{}/", base_url.path());
             base_url.set_path(&path);
         }
 
-        let extended_resolve_url = parse_config_url(&extended_resolve_url, "网易云扩展解析API")?;
+        let extended_resolve_url = parse_config_url(extended_resolve_url, "网易云扩展解析API")?;
 
         Ok(Self {
             client,
