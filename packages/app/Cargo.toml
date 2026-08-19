@@ -1,0 +1,18 @@
+[package]
+name = "app"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+service = { path = "../service", optional = true }
+
+dioxus.workspace = true
+serde.workspace = true
+tokio = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
+
+[features]
+default = []
+web = ["dioxus/web"]
+server = ["dioxus/server", "dep:service", "dep:tokio", "dep:sqlx"]

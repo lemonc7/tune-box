@@ -1,6 +1,5 @@
 /target
 .env
-data/
+tune.db
 .vscode/
-downloads/
-config/
+
