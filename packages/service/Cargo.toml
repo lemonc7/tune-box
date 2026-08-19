@@ -1,0 +1,24 @@
+[package]
+name = "service"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+
+async-trait.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+tokio.workspace = true
+tokio-util.workspace = true
+lofty.workspace = true
+time.workspace = true
+sqlx.workspace = true
+rmcp.workspace = true
+moka.workspace = true
+tracing.workspace = true
