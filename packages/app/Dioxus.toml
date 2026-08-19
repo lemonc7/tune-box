@@ -1,15 +1,14 @@
 [application]
 name = "tune-box"
-sub_package = "app"
 out_dir = "dist"
-asset_dir = "public"
+asset_dir = "assets"
 
 [web.app]
 title = "tune-box"
 
 [web.watcher]
 reload_html = true
-watch_path = ["src", "public"]
+watch_path = ["src", "assets"]
 index_on_404 = true
 
 [web.resource]

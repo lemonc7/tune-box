@@ -11,8 +11,15 @@ dioxus.workspace = true
 serde.workspace = true
 tokio = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["server"]
 web = ["dioxus/web"]
-server = ["dioxus/server", "dep:service", "dep:tokio", "dep:sqlx"]
+server = [
+  "dioxus/server",
+  "dep:service",
+  "dep:tokio",
+  "dep:sqlx",
+  "dep:reqwest",
+]
