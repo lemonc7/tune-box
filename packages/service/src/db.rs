@@ -12,6 +12,12 @@ use sqlx::{
     types::Json,
 };
 
+use shared::{
+    download::{Download as SharedDownload, Status as SharedStatus},
+    music::Metadata,
+};
+use tokio::fs;
+
 use crate::error::DatabaseError;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
@@ -30,14 +36,20 @@ pub enum Status {
     Cancelled,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Metadata {
-    pub name: String,
-    pub artists: Vec<String>,
-    pub album: String,
-    pub album_artist: String,
-    pub date: String,
-    pub cover_url: String,
+impl From<Status> for SharedStatus {
+    fn from(value: Status) -> Self {
+        match value {
+            Status::Pending => SharedStatus::Pending,
+            Status::Resolving => SharedStatus::Resolving,
+            Status::Downloading => SharedStatus::Downloading,
+            Status::Downloaded => SharedStatus::Downloaded,
+            Status::Tagging => SharedStatus::Tagging,
+            Status::Paused => SharedStatus::Paused,
+            Status::Completed => SharedStatus::Completed,
+            Status::Failed => SharedStatus::Failed,
+            Status::Cancelled => SharedStatus::Cancelled,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +67,20 @@ pub struct Download {
     pub error_message: Option<String>,
 }
 
+impl From<Download> for SharedDownload {
+    fn from(value: Download) -> Self {
+        Self {
+            id: value.id,
+            provider: value.provider,
+            track_id: value.track_id,
+            metadata: value.metadata.0,
+            status: value.status.into(),
+            downloaded_bytes: value.downloaded_bytes,
+            total_bytes: value.total_bytes,
+        }
+    }
+}
+
 pub struct ScannedSong {
     pub path: String,
     pub name: String,
@@ -68,29 +94,42 @@ pub struct Repository {
 }
 
 impl Repository {
-    pub async fn new(path: &str) -> Result<Self, DatabaseError> {
-        if let Some(parent) = Path::new(path).parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-
-        let url = format!("sqlite://{}", path);
-
-        let options = SqliteConnectOptions::from_str(&url)?
-            .create_if_missing(true)
-            .foreign_keys(true)
-            .journal_mode(SqliteJournalMode::Wal)
-            .synchronous(SqliteSynchronous::Normal)
-            .busy_timeout(Duration::from_secs(5));
-
-        let pool = SqlitePoolOptions::new()
-            .min_connections(1)
-            .max_connections(8)
-            .acquire_timeout(Duration::from_secs(10))
-            .connect_with(options)
-            .await?;
-
-        MIGRATOR.run(&pool).await?;
-
-        Ok(Self { pool })
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
     }
+}
+
+pub async fn connect(db_url: &str) -> Result<SqlitePool, DatabaseError> {
+    if let Some(path) = db_url.strip_prefix("sqlite://")
+        && let Some(parent) = Path::new(path).parent()
+    {
+        fs::create_dir_all(parent).await?;
+    }
+    let options = SqliteConnectOptions::from_str(db_url)?
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(5));
+    let pool = SqlitePoolOptions::new()
+        .min_connections(1)
+        .max_connections(8)
+        .acquire_timeout(Duration::from_secs(10))
+        .connect_with(options)
+        .await?;
+    MIGRATOR.run(&pool).await?;
+    Ok(pool)
+}
+
+#[cfg(test)]
+pub async fn connect_memory() -> Result<SqlitePool, DatabaseError> {
+    let options = SqliteConnectOptions::from_str("sqlite::memory:")?.foreign_keys(true);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await?;
+
+    MIGRATOR.run(&pool).await?;
+
+    Ok(pool)
 }
