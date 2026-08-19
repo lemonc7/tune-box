@@ -37,8 +37,6 @@ pub struct CreateDownloadRequest {
     #[garde(custom(non_blank))]
     pub track_id: String,
     #[garde(custom(non_blank))]
-    pub quality: String,
-    #[garde(custom(non_blank))]
     pub name: String,
     #[garde(inner(custom(non_blank)))]
     #[serde(default)]
