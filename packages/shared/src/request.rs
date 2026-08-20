@@ -1,5 +1,5 @@
 use garde::Validate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 fn non_blank(value: &str, _context: &()) -> garde::Result {
     if value.trim().is_empty() {
@@ -9,7 +9,7 @@ fn non_blank(value: &str, _context: &()) -> garde::Result {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate, PartialEq, Eq)]
 pub struct SearchRequest {
     #[garde(custom(non_blank))]
     pub provider: String,
@@ -22,7 +22,7 @@ pub struct SearchRequest {
     pub limit: i64,
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate, PartialEq, Eq)]
 pub struct PreviewRequest {
     #[garde(custom(non_blank))]
     pub provider: String,
@@ -30,7 +30,7 @@ pub struct PreviewRequest {
     pub track_id: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate, PartialEq, Eq)]
 pub struct CreateDownloadRequest {
     #[garde(custom(non_blank))]
     pub provider: String,
@@ -55,7 +55,7 @@ pub struct CreateDownloadRequest {
     pub cover_url: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate, PartialEq, Eq)]
 pub struct DownloadPageRequest {
     #[garde(range(min = 1))]
     pub before_id: i64,
@@ -63,7 +63,7 @@ pub struct DownloadPageRequest {
     pub limit: i64,
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate, PartialEq, Eq)]
 pub struct LibraryPageRequest {
     #[garde(skip)]
     #[serde(rename = "q", default)]

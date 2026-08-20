@@ -15,19 +15,25 @@ RUN sed -i \
     && apt-get update \
     && apt-get install -y --no-install-recommends build-essential cmake \
     && rm -rf /var/lib/apt/lists/*
+
+RUN rustup target add wasm32-unknown-unknown \
+    && cargo install dioxus-cli --version 0.7.10 --locked
+
 COPY . .
 
-# BuildKit 缓存 Cargo 注册表和编译产物；将最终二进制复制到缓存目录之外。
+# Dioxus Fullstack 的发布产物包含 server 可执行文件和 public 前端资源。
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
-    cargo build --locked --release \
-    && install -s -Dm755 target/release/tune-box /out/tune-box
+    dx bundle --package app --web --release \
+    && cp -a target/dx/app/release/web/. /out/ \
+    && install -Dm644 config.example.toml /out/config/config.toml \
+    && install -d /out/data /out/downloads
 
 FROM m.daocloud.io/gcr.io/distroless/cc-debian12:latest
 
 WORKDIR /app
-COPY --from=builder --chown=1000:1000 /out/tune-box /app/tune-box
+COPY --from=builder --chown=1000:1000 /out/ /app/
 
 EXPOSE 8080
 USER 1000:1000
-ENTRYPOINT ["/app/tune-box"]
+ENTRYPOINT ["/app/server"]

@@ -77,6 +77,7 @@ impl From<Download> for SharedDownload {
             status: value.status.into(),
             downloaded_bytes: value.downloaded_bytes,
             total_bytes: value.total_bytes,
+            error_message: value.error_message,
         }
     }
 }

@@ -90,6 +90,8 @@ pub enum TagError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
+    #[error("请求参数无效: {0}")]
+    InvalidRequest(String),
     #[error("无效的provider")]
     InvalidProvider,
     #[error("任务已存在")]

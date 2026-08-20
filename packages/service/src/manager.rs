@@ -271,6 +271,11 @@ fn cancel_running(running_tokens: &HashMap<i64, CancellationToken>) {
 }
 
 impl ManagerHandle {
+    /// Manager 的命令接收端仍然存在时返回 true。
+    pub fn is_running(&self) -> bool {
+        !self.command_tx.is_closed()
+    }
+
     /// 新任务已经写入数据库时调用，用命令通道立即唤醒 Manager。
     pub async fn wake(&self) -> Result<(), ManagerError> {
         self.command_tx

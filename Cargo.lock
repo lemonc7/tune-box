@@ -43,12 +43,12 @@ name = "app"
 version = "0.3.1"
 dependencies = [
  "dioxus",
- "reqwest 0.13.4",
- "serde",
+ "gloo-timers",
  "service",
  "shared",
- "sqlx",
  "tokio",
+ "tokio-util",
+ "url",
 ]
 
 [[package]]
