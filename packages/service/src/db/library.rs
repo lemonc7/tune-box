@@ -105,6 +105,7 @@ impl Repository {
             r#"
             SELECT
                 s.id,
+                s.path,
                 s.name,
                 s.size,
                 COALESCE(
@@ -174,10 +175,17 @@ impl Repository {
             .await?
             .into_iter()
             .map(|row| {
+                let path: String = row.try_get("path")?;
+                let extension = std::path::Path::new(&path)
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
                 Ok(Song {
                     id: row.try_get("id")?,
                     name: row.try_get("name")?,
                     artists: row.try_get::<Json<Vec<String>>, _>("artists")?.0,
+                    extension,
                     size: row.try_get("size")?,
                 })
             })

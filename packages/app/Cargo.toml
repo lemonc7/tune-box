@@ -8,18 +8,12 @@ shared = { path = "../shared" }
 service = { path = "../service", optional = true }
 
 dioxus.workspace = true
-serde.workspace = true
+url.workspace = true
+gloo-timers = { version = "0.3", features = ["futures"], optional = true }
 tokio = { workspace = true, optional = true }
-sqlx = { workspace = true, optional = true }
-reqwest = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
 
 [features]
-default = ["server"]
-web = ["dioxus/web"]
-server = [
-  "dioxus/server",
-  "dep:service",
-  "dep:tokio",
-  "dep:sqlx",
-  "dep:reqwest",
-]
+default = []
+web = ["dioxus/web", "dep:gloo-timers"]
+server = ["dioxus/server", "dep:service", "dep:tokio", "dep:tokio-util"]

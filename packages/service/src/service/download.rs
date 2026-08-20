@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use ::time::{Duration as TimeDuration, OffsetDateTime};
+use garde::Validate;
 use shared::{download::DownloadPage, music::Metadata, request::CreateDownloadRequest};
 use tokio::{sync::watch, time};
 use tokio_util::sync::CancellationToken;
@@ -22,6 +23,9 @@ impl Service {
         &self,
         request: CreateDownloadRequest,
     ) -> Result<Option<i64>, ServiceError> {
+        request
+            .validate()
+            .map_err(|error| ServiceError::InvalidRequest(error.to_string()))?;
         self.provider(&request.provider)?;
         let id = self
             .repository

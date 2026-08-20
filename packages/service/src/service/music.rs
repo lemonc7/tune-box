@@ -1,3 +1,4 @@
+use garde::Validate;
 use shared::{music::MusicResult, request::SearchRequest};
 
 use crate::{
@@ -9,6 +10,9 @@ use super::Service;
 
 impl Service {
     pub async fn search(&self, request: SearchRequest) -> Result<MusicResult, ServiceError> {
+        request
+            .validate()
+            .map_err(|error| ServiceError::InvalidRequest(error.to_string()))?;
         let provider = self.provider(&request.provider)?;
         provider
             .search(&request.query, request.page, request.limit)
