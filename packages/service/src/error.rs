@@ -135,3 +135,13 @@ pub enum ManagerError {
     #[error("数据库操作失败: {0}")]
     Database(#[from] sqlx::Error),
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum BackendError {
+    #[error(transparent)]
+    Database(#[from] DatabaseError),
+    #[error("创建 HTTP 客户端失败: {0}")]
+    HttpClient(#[from] reqwest::Error),
+    #[error(transparent)]
+    Provider(#[from] ProviderError),
+}

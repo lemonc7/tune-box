@@ -4,6 +4,7 @@ use shared::library::Song;
 use crate::{
     api,
     components::{EmptyState, ErrorBanner, NoticeBanner},
+    hooks::use_cursor_pagination,
     view,
 };
 
@@ -11,19 +12,21 @@ use crate::{
 pub fn LibraryPage() -> Element {
     let mut draft_query = use_signal(String::new);
     let mut query = use_signal(String::new);
-    let mut revision = use_signal(|| 0_u64);
-    let mut extra_songs = use_signal(Vec::<Song>::new);
-    let mut loaded_more = use_signal(|| false);
-    let mut next_before_id = use_signal(|| None::<i64>);
-    let mut loading_more = use_signal(|| false);
-    let mut syncing = use_signal(|| false);
-    let mut feedback = use_signal(|| None::<Result<String, String>>);
+    let mut notice = use_signal(|| None::<String>);
+    let mut pagination = use_cursor_pagination::<Song>();
 
-    let library_resource = use_server_future(move || {
+    let mut library_resource = use_server_future(move || {
         let query = query();
-        let _revision = revision();
         api::load_library(query, None, api::PAGE_SIZE)
     })?;
+    let mut sync_library = use_action(move |(): ()| async move {
+        let count = api::sync_library()
+            .await
+            .map_err(|error| std::io::Error::other(view::server_error_message(error)))?;
+        pagination.reset();
+        library_resource.restart();
+        Ok::<_, std::io::Error>(count)
+    });
 
     let snapshot = match library_resource() {
         Some(Ok(snapshot)) => snapshot,
@@ -39,12 +42,8 @@ pub fn LibraryPage() -> Element {
         },
     };
 
-    let next_cursor = if loaded_more() {
-        next_before_id()
-    } else {
-        snapshot.page.next_before_id
-    };
-    let has_songs = !snapshot.page.songs.is_empty() || !extra_songs.read().is_empty();
+    let next_cursor = pagination.next_cursor(snapshot.page.next_before_id);
+    let has_songs = !snapshot.page.songs.is_empty() || !pagination.is_empty();
 
     rsx! {
         document::Title { "本地曲库 - Tune Box" }
@@ -58,34 +57,19 @@ pub fn LibraryPage() -> Element {
                     button {
                         class: "inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-50",
                         r#type: "button",
-                        disabled: syncing(),
-                        onclick: move |_| {
-                            syncing.set(true);
-                            feedback.set(None);
-                            spawn(async move {
-                                match api::sync_library().await {
-                                    Ok(count) => {
-                                        feedback.set(Some(Ok(format!("已同步 {count} 首歌曲"))));
-                                        extra_songs.write().clear();
-                                        loaded_more.set(false);
-                                        next_before_id.set(None);
-                                        *revision.write() += 1;
-                                    }
-                                    Err(error) => feedback.set(Some(Err(
-                                        view::server_error_message(error),
-                                    ))),
-                                }
-                                syncing.set(false);
-                            });
-                        },
-                        if syncing() { "同步中…" } else { "同步曲库" }
+                        disabled: sync_library.pending(),
+                        onclick: move |_| { sync_library.call(()); },
+                        if sync_library.pending() { "同步中…" } else { "同步曲库" }
                     }
                 }
             }
 
-            match feedback() {
-                Some(Ok(message)) => rsx! { NoticeBanner { message } },
-                Some(Err(message)) => rsx! { ErrorBanner { message } },
+            if let Some(message) = notice() {
+                NoticeBanner { message }
+            }
+            match sync_library.value() {
+                Some(Ok(count)) => rsx! { NoticeBanner { message: format!("已同步 {} 首歌曲", count()) } },
+                Some(Err(error)) => rsx! { ErrorBanner { message: error.to_string() } },
                 None => rsx! {},
             }
 
@@ -94,11 +78,14 @@ pub fn LibraryPage() -> Element {
                     class: "flex gap-2 border-b border-zinc-100 p-4",
                     onsubmit: move |event| {
                         event.prevent_default();
-                        query.set(draft_query().trim().to_owned());
-                        extra_songs.write().clear();
-                        loaded_more.set(false);
-                        next_before_id.set(None);
-                        *revision.write() += 1;
+                        let next_query = draft_query().trim().to_owned();
+                        pagination.reset();
+                        notice.set(None);
+                        if query() == next_query {
+                            library_resource.restart();
+                        } else {
+                            query.set(next_query);
+                        }
                     },
                     input {
                         class: "h-10 min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-3 text-sm shadow-sm outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:ring-2 focus:ring-zinc-950/10",
@@ -125,24 +112,20 @@ pub fn LibraryPage() -> Element {
                                 key: "{song.id}",
                                 song,
                                 on_deleted: move |_| {
-                                    extra_songs.write().clear();
-                                    loaded_more.set(false);
-                                    next_before_id.set(None);
-                                    feedback.set(Some(Ok("歌曲已删除".to_owned())));
-                                    *revision.write() += 1;
+                                    pagination.reset();
+                                    notice.set(Some("歌曲已删除".to_owned()));
+                                    library_resource.restart();
                                 },
                             }
                         }
-                        for song in extra_songs() {
+                        for song in pagination.items() {
                             SongCard {
                                 key: "extra-{song.id}",
                                 song,
                                 on_deleted: move |_| {
-                                    extra_songs.write().clear();
-                                    loaded_more.set(false);
-                                    next_before_id.set(None);
-                                    feedback.set(Some(Ok("歌曲已删除".to_owned())));
-                                    *revision.write() += 1;
+                                    pagination.reset();
+                                    notice.set(Some("歌曲已删除".to_owned()));
+                                    library_resource.restart();
                                 },
                             }
                         }
@@ -150,13 +133,17 @@ pub fn LibraryPage() -> Element {
                 }
             }
 
+            if let Some(error) = pagination.error() {
+                ErrorBanner { message: error }
+            }
+
             if let Some(cursor) = next_cursor {
                 button {
                     class: "mx-auto flex h-10 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-50",
                     r#type: "button",
-                    disabled: loading_more(),
+                    disabled: pagination.loading(),
                     onclick: move |_| {
-                        loading_more.set(true);
+                        pagination.start_loading();
                         let current_query = query();
                         spawn(async move {
                             match api::load_library(
@@ -167,18 +154,18 @@ pub fn LibraryPage() -> Element {
                             .await
                             {
                                 Ok(next) => {
-                                    extra_songs.write().extend(next.page.songs);
-                                    next_before_id.set(next.page.next_before_id);
-                                    loaded_more.set(true);
+                                    pagination.append(
+                                        next.page.songs,
+                                        next.page.next_before_id,
+                                    );
                                 }
-                                Err(error) => feedback.set(Some(Err(
-                                    view::server_error_message(error),
-                                ))),
+                                Err(error) => {
+                                    pagination.fail(view::server_error_message(error));
+                                }
                             }
-                            loading_more.set(false);
                         });
                     },
-                    if loading_more() { "加载中…" } else { "加载更多" }
+                    if pagination.loading() { "加载中…" } else { "加载更多" }
                 }
             } else if has_songs {
                 p { class: "text-center text-xs text-zinc-400", "已经到底了" }
@@ -190,8 +177,19 @@ pub fn LibraryPage() -> Element {
 #[component]
 fn SongCard(song: Song, on_deleted: EventHandler<()>) -> Element {
     let mut armed = use_signal(|| false);
-    let mut deleting = use_signal(|| false);
-    let mut error = use_signal(|| None::<String>);
+    let mut armed_task = armed;
+    let mut delete_song = use_action(move |id: i64| async move {
+        match api::delete_song(id).await {
+            Ok(()) => {
+                on_deleted.call(());
+                Ok(())
+            }
+            Err(error) => {
+                armed_task.set(false);
+                Err(std::io::Error::other(view::server_error_message(error)))
+            }
+        }
+    });
     let artists = view::artists(&song.artists);
     let size = view::format_bytes(song.size);
     let extension = if song.extension.is_empty() {
@@ -216,27 +214,16 @@ fn SongCard(song: Song, on_deleted: EventHandler<()>) -> Element {
                 button {
                     class: "inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-red-200 bg-white px-3 text-sm font-medium text-red-600 shadow-sm transition hover:bg-red-50 disabled:pointer-events-none disabled:opacity-50",
                     r#type: "button",
-                    disabled: deleting(),
+                    disabled: delete_song.pending(),
                     onclick: move |_| {
                         if !armed() {
                             armed.set(true);
                             return;
                         }
 
-                        deleting.set(true);
-                        error.set(None);
-                        spawn(async move {
-                            match api::delete_song(song.id).await {
-                                Ok(()) => on_deleted.call(()),
-                                Err(response_error) => {
-                                    error.set(Some(view::server_error_message(response_error)));
-                                    armed.set(false);
-                                }
-                            }
-                            deleting.set(false);
-                        });
+                        delete_song.call(song.id);
                     },
-                    if deleting() {
+                    if delete_song.pending() {
                         "删除中…"
                     } else if armed() {
                         "再次点击确认"
@@ -244,8 +231,8 @@ fn SongCard(song: Song, on_deleted: EventHandler<()>) -> Element {
                         "删除"
                     }
                 }
-                if let Some(message) = error() {
-                    span { class: "text-xs text-red-600", "{message}" }
+                if let Some(Err(error)) = delete_song.value() {
+                    span { class: "text-xs text-red-600", "{error}" }
                 }
             }
         }

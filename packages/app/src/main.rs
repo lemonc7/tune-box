@@ -1,5 +1,6 @@
 mod api;
 mod components;
+mod hooks;
 mod pages;
 mod view;
 
@@ -10,7 +11,7 @@ mod state;
 
 use dioxus::prelude::*;
 
-use components::ErrorLayout;
+use components::{AppLayout, ErrorLayout};
 use pages::{DownloadsPage as Downloads, LibraryPage as Library, SearchPage as Search};
 
 static CSS: Asset = asset!("/assets/tailwind.css");
@@ -29,6 +30,7 @@ async fn main() -> Result<(), server::BoxError> {
 
 #[derive(Routable, Clone, PartialEq, Debug)]
 enum Route {
+    #[layout(AppLayout)]
     #[layout(ErrorLayout)]
     #[route("/")]
     Search {},

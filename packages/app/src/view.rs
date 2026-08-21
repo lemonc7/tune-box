@@ -48,17 +48,6 @@ pub fn progress_percent(download: &Download) -> u64 {
         .unwrap_or_default()
 }
 
-pub fn is_active(status: Status) -> bool {
-    matches!(
-        status,
-        Status::Pending
-            | Status::Resolving
-            | Status::Downloading
-            | Status::Downloaded
-            | Status::Tagging
-    )
-}
-
 pub fn status_presentation(status: Status) -> (&'static str, &'static str) {
     match status {
         Status::Pending => ("等待中", "bg-zinc-100 text-zinc-600"),

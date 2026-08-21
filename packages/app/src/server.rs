@@ -33,9 +33,10 @@ pub async fn run() -> Result<(), BoxError> {
         service,
         manager,
         manager_handle,
+        download_events,
     } = Backend::new(&config).await?;
 
-    let result = serve(&config, service, manager, manager_handle).await;
+    let result = serve(&config, service, manager, manager_handle, download_events).await;
 
     // SqlitePool::drop 无法异步等待连接完全关闭，最后显式收尾。
     tracing::info!("正在关闭数据库连接池");
@@ -52,8 +53,9 @@ async fn serve(
     service: Arc<Service>,
     manager: Manager,
     manager_handle: ManagerHandle,
+    download_events: service::events::DownloadEvents,
 ) -> Result<(), BoxError> {
-    let state = AppState::new(service, manager_handle.clone());
+    let state = AppState::new(service, manager_handle.clone(), download_events);
 
     let router = dioxus::server::router(App)
         .route("/health", get(health_check))
@@ -181,24 +183,26 @@ async fn stream_preview(
 }
 
 async fn shutdown_signal() {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{SignalKind, signal as unix_signal};
+    cfg_select! {
+        unix => {
+            use tokio::signal::unix::{SignalKind, signal as unix_signal};
 
-        let mut terminate = unix_signal(SignalKind::terminate()).expect("注册 SIGTERM 处理器失败");
+            let mut terminate = unix_signal(SignalKind::terminate())
+                .expect("注册SIGTERM处理器失败");
 
-        tokio::select! {
-            result = signal::ctrl_c() => {
-                if let Err(error) = result {
-                    tracing::error!(%error, "监听 Ctrl+C 失败");
+            tokio::select! {
+                result = signal::ctrl_c() => {
+                    if let Err(error) = result {
+                        tracing::error!(%error, "监听Ctrl+C失败");
+                    }
                 }
+                _ = terminate.recv() => {}
             }
-            _ = terminate.recv() => {}
         }
-    }
-
-    #[cfg(not(unix))]
-    if let Err(error) = signal::ctrl_c().await {
-        tracing::error!(%error, "监听 Ctrl+C 失败");
+        _ => {
+            if let Err(error) = signal::ctrl_c().await {
+                tracing::error!(%error, "监听Ctrl+C失败");
+            }
+        }
     }
 }

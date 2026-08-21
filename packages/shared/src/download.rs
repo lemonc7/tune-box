@@ -43,3 +43,18 @@ pub enum DownloadAction {
     Retry,
     Delete,
 }
+
+// 正在下载的任务写入了新的进度。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadEvent {
+    Progress {
+        id: i64,
+        downloaded_bytes: i64,
+        total_bytes: Option<i64>,
+    },
+    // 音频文件下载完成，客户端可丢弃该任务的实时进度。
+    Downloaded {
+        id: i64,
+    },
+}
