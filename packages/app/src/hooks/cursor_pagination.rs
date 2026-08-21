@@ -6,6 +6,7 @@ struct CursorPage<T> {
     loaded: bool,
     loading: bool,
     error: Option<String>,
+    generation: u64,
 }
 
 impl<T> Default for CursorPage<T> {
@@ -16,6 +17,7 @@ impl<T> Default for CursorPage<T> {
             loaded: false,
             loading: false,
             error: None,
+            generation: 0,
         }
     }
 }
@@ -62,25 +64,43 @@ impl<T: 'static> CursorPagination<T> {
     }
 
     pub fn reset(&mut self) {
-        self.state.set(CursorPage::default());
+        let generation = self.state.read().generation.wrapping_add(1);
+        self.state.set(CursorPage {
+            generation,
+            ..CursorPage::default()
+        });
     }
 
-    pub fn start_loading(&mut self) {
+    pub fn start_loading(&mut self) -> u64 {
         let mut state = self.state.write();
         state.loading = true;
         state.error = None;
+        state.generation
     }
 
-    pub fn append(&mut self, items: impl IntoIterator<Item = T>, next_cursor: Option<i64>) {
+    pub fn append(
+        &mut self,
+        generation: u64,
+        items: impl IntoIterator<Item = T>,
+        next_cursor: Option<i64>,
+    ) {
         let mut state = self.state.write();
+        if state.generation != generation {
+            return;
+        }
+
         state.extra_items.extend(items);
         state.next_cursor = next_cursor;
         state.loaded = true;
         state.loading = false;
     }
 
-    pub fn fail(&mut self, message: String) {
+    pub fn fail(&mut self, generation: u64, message: String) {
         let mut state = self.state.write();
+        if state.generation != generation {
+            return;
+        }
+
         state.loading = false;
         state.error = Some(message);
     }
