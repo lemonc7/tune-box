@@ -3,7 +3,7 @@ use shared::download::{Download, DownloadAction, Status};
 
 use crate::{
     api,
-    components::{EmptyState, ErrorBanner},
+    components::{EmptyState, ErrorBanner, InfiniteScrollTrigger},
     hooks::{use_cursor_pagination, use_download_events},
     view,
 };
@@ -30,6 +30,23 @@ pub fn DownloadsPage() -> Element {
 
     let next_cursor = pagination.next_cursor(page.next_before_id);
     let has_downloads = !page.downloads.is_empty() || !pagination.is_empty();
+    let load_more = use_callback(move |cursor: i64| {
+        if pagination.loading() {
+            return;
+        }
+
+        let generation = pagination.start_loading();
+        spawn(async move {
+            match api::list_downloads(Some(cursor), api::PAGE_SIZE).await {
+                Ok(next) => {
+                    pagination.append(generation, next.downloads, next.next_before_id);
+                }
+                Err(error) => {
+                    pagination.fail(generation, view::server_error_message(error));
+                }
+            }
+        });
+    });
 
     rsx! {
         document::Title { "下载任务 - Tune Box" }
@@ -89,24 +106,11 @@ pub fn DownloadsPage() -> Element {
                 ErrorBanner { message: error }
             }
             if let Some(cursor) = next_cursor {
-                button {
-                    class: "mx-auto flex h-10 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-50",
-                    r#type: "button",
-                    disabled: pagination.loading(),
-                    onclick: move |_| {
-                        pagination.start_loading();
-                        spawn(async move {
-                            match api::list_downloads(Some(cursor), api::PAGE_SIZE).await {
-                                Ok(next) => {
-                                    pagination.append(next.downloads, next.next_before_id);
-                                }
-                                Err(error) => {
-                                    pagination.fail(view::server_error_message(error));
-                                }
-                            }
-                        });
-                    },
-                    if pagination.loading() { "加载中…" } else { "加载更多" }
+                InfiniteScrollTrigger {
+                    key: "downloads-load-more-{cursor}",
+                    loading: pagination.loading(),
+                    failed: pagination.error().is_some(),
+                    on_load_more: move |_| load_more.call(cursor),
                 }
             } else if has_downloads {
                 p { class: "text-center text-xs text-zinc-400", "已经到底了" }

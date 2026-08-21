@@ -5,9 +5,9 @@ mod pages;
 mod view;
 
 #[cfg(feature = "server")]
-mod server;
+mod error;
 #[cfg(feature = "server")]
-mod state;
+mod server;
 
 use dioxus::prelude::*;
 
@@ -23,7 +23,7 @@ fn main() {
 
 #[cfg(feature = "server")]
 #[tokio::main]
-async fn main() -> Result<(), server::BoxError> {
+async fn main() -> dioxus::Result<()> {
     dioxus::logger::initialize_default();
     server::run().await
 }

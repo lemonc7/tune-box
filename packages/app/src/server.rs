@@ -1,6 +1,7 @@
-use std::{error::Error, io, net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 
 use dioxus::{
+    CapturedError,
     logger::tracing,
     server::axum::{
         self, Extension,
@@ -14,6 +15,7 @@ use dioxus::{
 use service::{
     backend::Backend,
     config::{Config, load_config},
+    events::DownloadEvents,
     manager::{Manager, ManagerHandle},
     service::Service,
 };
@@ -21,13 +23,32 @@ use shared::request::PreviewRequest;
 use tokio::{net::TcpListener, signal};
 use tokio_util::sync::CancellationToken;
 
-use crate::{App, state::AppState};
+use crate::App;
 
-pub type BoxError = Box<dyn Error>;
+// 服务端组合状态，由Axum Extension注入SSR、Server Function和自定义路由。
+#[derive(Clone)]
+pub(crate) struct AppState {
+    pub service: Arc<Service>,
+    pub manager: ManagerHandle,
+    pub download_events: DownloadEvents,
+}
 
-pub async fn run() -> Result<(), BoxError> {
-    let config = load_config("./config/config.toml")
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+impl AppState {
+    pub(crate) fn new(
+        service: Arc<Service>,
+        manager: ManagerHandle,
+        download_events: DownloadEvents,
+    ) -> Self {
+        Self {
+            service,
+            manager,
+            download_events,
+        }
+    }
+}
+
+pub async fn run() -> dioxus::Result<()> {
+    let config = load_config("./config/config.toml").map_err(CapturedError::msg)?;
     let Backend {
         pool,
         service,
@@ -38,7 +59,7 @@ pub async fn run() -> Result<(), BoxError> {
 
     let result = serve(&config, service, manager, manager_handle, download_events).await;
 
-    // SqlitePool::drop 无法异步等待连接完全关闭，最后显式收尾。
+    // SqlitePool::drop无法异步等待连接完全关闭，显示关闭
     tracing::info!("正在关闭数据库连接池");
     pool.close().await;
     tracing::info!("数据库连接池已关闭");
@@ -54,44 +75,48 @@ async fn serve(
     manager: Manager,
     manager_handle: ManagerHandle,
     download_events: service::events::DownloadEvents,
-) -> Result<(), BoxError> {
+) -> dioxus::Result<()> {
     let state = AppState::new(service, manager_handle.clone(), download_events);
 
     let router = dioxus::server::router(App)
-        .route("/health", get(health_check))
         .route("/api/preview", get(stream_preview))
-        // Dioxus Router 已注册 Server Function、SSR fallback 和静态资源。
-        // Extension 会覆盖整个 Router，Server Function 也能提取 AppState。
+        // Dioxus Router已注册Server Function，SSR fallback和静态资源。
+        // Extension会覆盖整个Router，Server Function也能提取AppState。
         .layer(Extension(state));
 
     let address = server_address(config.server.port)?;
     let listener = TcpListener::bind(address).await?;
     tracing::info!(%address, "服务器已启动");
 
+    // 关闭信号，异步共享
     let shutdown = CancellationToken::new();
     let server_shutdown = shutdown.clone();
 
+    // 启动http服务任务
     let mut server_task = tokio::spawn(async move {
         axum::serve(listener, router)
             .with_graceful_shutdown(server_shutdown.cancelled_owned())
             .await
     });
+    // 启动manager任务
     let mut manager_task = tokio::spawn(manager.run());
 
     tokio::select! {
         _ = shutdown_signal() => {
             tracing::info!("收到关闭信号");
 
-            // 停止接受新请求；Axum 会继续等待当前请求完成。
+            // 停止接受新请求；Axum会继续等待当前请求完成。
             shutdown.cancel();
-            // 同时通知下载管理器取消 worker 并保存最终状态。
+            // 同时通知下载管理器取消worker并保存最终状态。
             let _ = manager_handle.shutdown().await;
 
+            // 同时等待两个任务完成
             let (server_result, manager_result) =
                 tokio::join!(&mut server_task, &mut manager_task);
             server_result??;
             manager_result??;
         }
+        // http服务先停止
         server_result = &mut server_task => {
             tracing::warn!("HTTP 服务已经停止");
 
@@ -101,6 +126,7 @@ async fn serve(
             server_result??;
             manager_task.await??;
         }
+        // manager任务先停止
         manager_result = &mut manager_task => {
             tracing::error!("下载管理器意外终止");
 
@@ -108,29 +134,21 @@ async fn serve(
             server_task.await??;
 
             manager_result??;
-            return Err(io::Error::other("下载管理器意外终止").into());
+            return Err(CapturedError::msg("下载管理器意外终止"));
         }
     }
 
     Ok(())
 }
 
-fn server_address(configured_port: u32) -> Result<SocketAddr, BoxError> {
-    // dx serve 会注入内部 IP/PORT，必须监听这个地址才能通过开发代理访问。
+fn server_address(configured_port: u32) -> dioxus::Result<SocketAddr> {
+    // dx serve会注入内部IP/PORT，必须监听这个地址才能通过开发代理访问。
     if dioxus::cli_config::is_cli_enabled() {
         return Ok(dioxus::cli_config::fullstack_address_or_localhost());
     }
 
     let port = u16::try_from(configured_port)?;
     Ok(SocketAddr::from(([0, 0, 0, 0], port)))
-}
-
-async fn health_check(Extension(state): Extension<AppState>) -> StatusCode {
-    if state.manager.is_running() {
-        StatusCode::OK
-    } else {
-        StatusCode::SERVICE_UNAVAILABLE
-    }
 }
 
 async fn stream_preview(

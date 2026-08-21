@@ -169,6 +169,34 @@ pub fn EmptyState(message: String) -> Element {
 }
 
 #[component]
+pub fn InfiniteScrollTrigger(
+    loading: bool,
+    failed: bool,
+    on_load_more: EventHandler<()>,
+) -> Element {
+    rsx! {
+      button {
+        class: "mx-auto flex h-10 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-50",
+        r#type: "button",
+        disabled: loading,
+        onvisible: move |event| {
+            if event.is_intersecting().unwrap_or(false) && !loading && !failed {
+                on_load_more.call(());
+            }
+        },
+        onclick: move |_| on_load_more.call(()),
+        if loading {
+            "加载中…"
+        } else if failed {
+            "加载失败，点击重试"
+        } else {
+            "加载更多"
+        }
+      }
+    }
+}
+
+#[component]
 fn ErrorPage(code: String, title: String, message: String) -> Element {
     rsx! {
       document::Title { "{title} - Tune Box" }

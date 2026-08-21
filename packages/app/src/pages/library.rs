@@ -3,7 +3,7 @@ use shared::library::Song;
 
 use crate::{
     api,
-    components::{EmptyState, ErrorBanner, NoticeBanner},
+    components::{EmptyState, ErrorBanner, InfiniteScrollTrigger, NoticeBanner},
     hooks::use_cursor_pagination,
     view,
 };
@@ -44,6 +44,24 @@ pub fn LibraryPage() -> Element {
 
     let next_cursor = pagination.next_cursor(snapshot.page.next_before_id);
     let has_songs = !snapshot.page.songs.is_empty() || !pagination.is_empty();
+    let load_more = use_callback(move |cursor: i64| {
+        if pagination.loading() {
+            return;
+        }
+
+        let generation = pagination.start_loading();
+        let current_query = query();
+        spawn(async move {
+            match api::load_library(current_query, Some(cursor), api::PAGE_SIZE).await {
+                Ok(next) => {
+                    pagination.append(generation, next.page.songs, next.page.next_before_id);
+                }
+                Err(error) => {
+                    pagination.fail(generation, view::server_error_message(error));
+                }
+            }
+        });
+    });
 
     rsx! {
         document::Title { "本地曲库 - Tune Box" }
@@ -138,34 +156,11 @@ pub fn LibraryPage() -> Element {
             }
 
             if let Some(cursor) = next_cursor {
-                button {
-                    class: "mx-auto flex h-10 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-50",
-                    r#type: "button",
-                    disabled: pagination.loading(),
-                    onclick: move |_| {
-                        pagination.start_loading();
-                        let current_query = query();
-                        spawn(async move {
-                            match api::load_library(
-                                current_query,
-                                Some(cursor),
-                                api::PAGE_SIZE,
-                            )
-                            .await
-                            {
-                                Ok(next) => {
-                                    pagination.append(
-                                        next.page.songs,
-                                        next.page.next_before_id,
-                                    );
-                                }
-                                Err(error) => {
-                                    pagination.fail(view::server_error_message(error));
-                                }
-                            }
-                        });
-                    },
-                    if pagination.loading() { "加载中…" } else { "加载更多" }
+                InfiniteScrollTrigger {
+                    key: "library-load-more-{cursor}",
+                    loading: pagination.loading(),
+                    failed: pagination.error().is_some(),
+                    on_load_more: move |_| load_more.call(cursor),
                 }
             } else if has_songs {
                 p { class: "text-center text-xs text-zinc-400", "已经到底了" }
