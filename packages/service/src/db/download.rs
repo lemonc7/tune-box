@@ -71,9 +71,9 @@ impl Repository {
             Download,
             r#"
             UPDATE downloads
-            SET status = CASE status
+                SET status = CASE status
                     WHEN 'pending' THEN 'resolving'
-                    WHEN 'downloading' THEN 'tagging'
+                    WHEN 'downloaded' THEN 'tagging'
                 END,
                 version = version + 1,
                 next_retry_at = NULL,
@@ -169,7 +169,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_downloaded(id);
+        }
+        Ok(changed)
     }
 
     pub async fn update_progress(
@@ -196,6 +200,10 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_progress(id, downloaded, total);
+        }
+        Ok(changed)
     }
 }

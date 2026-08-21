@@ -6,7 +6,8 @@ use crate::{
     config::Config,
     db::{self, Repository},
     download::Downloader,
-    error::{DatabaseError, ProviderError},
+    error::BackendError,
+    events::DownloadEvents,
     manager::{Manager, ManagerHandle},
     provider::{Provider, kuwo::KuwoProvider, netease::NeteaseProvider},
     service::Service,
@@ -19,6 +20,7 @@ pub struct Backend {
     pub service: Arc<Service>,
     pub manager: Manager,
     pub manager_handle: ManagerHandle,
+    pub download_events: DownloadEvents,
 }
 
 impl Backend {
@@ -53,6 +55,7 @@ impl Backend {
         let embedder = Embedder::new(Duration::from_secs(config.server.http_timeout))?;
         let pool = db::connect("sqlite://data/tune.db").await?;
         let repository = Repository::new(pool.clone());
+        let download_events = repository.download_events();
         let service = Arc::new(Service::new(
             repository.clone(),
             providers,
@@ -75,16 +78,7 @@ impl Backend {
             service,
             manager,
             manager_handle,
+            download_events,
         })
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum BackendError {
-    #[error(transparent)]
-    Database(#[from] DatabaseError),
-    #[error("创建 HTTP 客户端失败: {0}")]
-    HttpClient(#[from] reqwest::Error),
-    #[error(transparent)]
-    Provider(#[from] ProviderError),
 }

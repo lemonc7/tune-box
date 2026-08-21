@@ -18,7 +18,7 @@ use shared::{
 };
 use tokio::fs;
 
-use crate::error::DatabaseError;
+use crate::{error::DatabaseError, events::DownloadEvents};
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -92,11 +92,33 @@ pub struct ScannedSong {
 #[derive(Debug, Clone)]
 pub struct Repository {
     pool: SqlitePool,
+    download_events: DownloadEvents,
 }
 
 impl Repository {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            download_events: DownloadEvents::default(),
+        }
+    }
+
+    pub fn download_events(&self) -> DownloadEvents {
+        self.download_events.clone()
+    }
+
+    pub(crate) fn notify_download_progress(
+        &self,
+        id: i64,
+        downloaded_bytes: i64,
+        total_bytes: Option<i64>,
+    ) {
+        self.download_events
+            .progress(id, downloaded_bytes, total_bytes);
+    }
+
+    pub(crate) fn notify_downloaded(&self, id: i64) {
+        self.download_events.downloaded(id);
     }
 }
 
@@ -133,4 +155,102 @@ pub async fn connect_memory() -> Result<SqlitePool, DatabaseError> {
     MIGRATOR.run(&pool).await?;
 
     Ok(pool)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use shared::{download::DownloadEvent, music::Metadata};
+
+    use super::{Repository, Status, connect_memory};
+
+    fn metadata() -> Metadata {
+        Metadata {
+            name: "song".to_owned(),
+            artists: vec!["artist".to_owned()],
+            album: String::new(),
+            album_artist: String::new(),
+            date: String::new(),
+            cover_url: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn persisted_progress_publishes_an_event() {
+        let repository = Repository::new(connect_memory().await.unwrap());
+        let id = repository
+            .add_download("provider", "track", &metadata())
+            .await
+            .unwrap()
+            .unwrap();
+        let task = repository.claim_next(&[]).await.unwrap().unwrap();
+        assert!(repository.mark_downloading(id, task.version).await.unwrap());
+        let mut events = repository.download_events().subscribe();
+
+        assert!(
+            repository
+                .update_progress(id, task.version, 512, Some(1024))
+                .await
+                .unwrap()
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            event,
+            DownloadEvent::Progress {
+                id,
+                downloaded_bytes: 512,
+                total_bytes: Some(1024),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn downloaded_and_retried_files_are_claimed_for_tagging() {
+        let repository = Repository::new(connect_memory().await.unwrap());
+        repository
+            .add_download("provider", "track", &metadata())
+            .await
+            .unwrap();
+
+        let resolving = repository.claim_next(&[]).await.unwrap().unwrap();
+        assert!(matches!(resolving.status, Status::Resolving));
+        assert!(
+            repository
+                .mark_downloading(resolving.id, resolving.version)
+                .await
+                .unwrap()
+        );
+        let mut events = repository.download_events().subscribe();
+        assert!(
+            repository
+                .mark_downloaded(resolving.id, resolving.version, "song.flac", 42)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), events.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            DownloadEvent::Downloaded { id: resolving.id }
+        );
+
+        let tagging = repository.claim_next(&[]).await.unwrap().unwrap();
+        assert!(matches!(tagging.status, Status::Tagging));
+        assert!(
+            repository
+                .mark_failed(tagging.id, tagging.version, "tagging failed")
+                .await
+                .unwrap()
+        );
+        assert!(repository.retry_download(tagging.id).await.unwrap());
+
+        let retried = repository.claim_next(&[]).await.unwrap().unwrap();
+        assert!(matches!(retried.status, Status::Tagging));
+    }
 }

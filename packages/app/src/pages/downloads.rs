@@ -4,50 +4,18 @@ use shared::download::{Download, DownloadAction, Status};
 use crate::{
     api,
     components::{EmptyState, ErrorBanner},
+    hooks::{use_cursor_pagination, use_download_events},
     view,
 };
 
 #[component]
 pub fn DownloadsPage() -> Element {
-    let mut revision = use_signal(|| 0_u64);
-    let mut extra_downloads = use_signal(Vec::<Download>::new);
-    let mut loaded_more = use_signal(|| false);
-    let mut next_before_id = use_signal(|| None::<i64>);
-    let mut loading_more = use_signal(|| false);
-    let mut load_error = use_signal(|| None::<String>);
-
-    let downloads_resource = use_server_future(move || {
-        let _revision = revision();
-        api::list_downloads(None, api::PAGE_SIZE)
-    })?;
-
-    let _active = use_memo(move || {
-        let base_active = downloads_resource()
-            .and_then(Result::ok)
-            .is_some_and(|page| {
-                page.downloads
-                    .iter()
-                    .any(|download| view::is_active(download.status))
-            });
-        base_active
-            || extra_downloads
-                .read()
-                .iter()
-                .any(|download| view::is_active(download.status))
-    });
-
-    let _polling = use_future(move || async move {
-        #[cfg(feature = "web")]
-        loop {
-            gloo_timers::future::TimeoutFuture::new(2_000).await;
-            if _active() {
-                *revision.write() += 1;
-            }
-        }
-
-        #[cfg(not(feature = "web"))]
-        std::future::pending::<()>().await;
-    });
+    let mut pagination = use_cursor_pagination::<Download>();
+    let mut downloads_resource = use_server_future(|| api::list_downloads(None, api::PAGE_SIZE))?;
+    let refresh_downloads = use_callback(move |()| downloads_resource.restart());
+    let download_events = use_download_events(refresh_downloads);
+    let mut progress_updates = download_events.progress;
+    let events_error = download_events.error;
 
     let page = match downloads_resource() {
         Some(Ok(page)) => page,
@@ -60,12 +28,8 @@ pub fn DownloadsPage() -> Element {
         },
     };
 
-    let next_cursor = if loaded_more() {
-        next_before_id()
-    } else {
-        page.next_before_id
-    };
-    let has_downloads = !page.downloads.is_empty() || !extra_downloads.read().is_empty();
+    let next_cursor = pagination.next_cursor(page.next_before_id);
+    let has_downloads = !page.downloads.is_empty() || !pagination.is_empty();
 
     rsx! {
         document::Title { "下载任务 - Tune Box" }
@@ -78,7 +42,11 @@ pub fn DownloadsPage() -> Element {
                 button {
                     class: "inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-100",
                     r#type: "button",
-                    onclick: move |_| *revision.write() += 1,
+                    onclick: move |_| {
+                        progress_updates.write().clear();
+                        pagination.reset();
+                        downloads_resource.restart();
+                    },
                     "刷新"
                 }
             }
@@ -90,56 +58,55 @@ pub fn DownloadsPage() -> Element {
                     for download in page.downloads {
                         DownloadCard {
                             key: "{download.id}",
+                            progress: progress_updates.read().get(&download.id).copied(),
                             download,
                             on_changed: move |_| {
-                                extra_downloads.write().clear();
-                                loaded_more.set(false);
-                                next_before_id.set(None);
-                                *revision.write() += 1;
+                                progress_updates.write().clear();
+                                pagination.reset();
+                                downloads_resource.restart();
                             },
                         }
                     }
-                    for download in extra_downloads() {
+                    for download in pagination.items() {
                         DownloadCard {
                             key: "extra-{download.id}",
+                            progress: progress_updates.read().get(&download.id).copied(),
                             download,
                             on_changed: move |_| {
-                                extra_downloads.write().clear();
-                                loaded_more.set(false);
-                                next_before_id.set(None);
-                                *revision.write() += 1;
+                                progress_updates.write().clear();
+                                pagination.reset();
+                                downloads_resource.restart();
                             },
                         }
                     }
                 }
             }
 
-            if let Some(error) = load_error() {
+            if let Some(error) = pagination.error() {
+                ErrorBanner { message: error }
+            }
+            if let Some(error) = events_error() {
                 ErrorBanner { message: error }
             }
             if let Some(cursor) = next_cursor {
                 button {
                     class: "mx-auto flex h-10 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-50",
                     r#type: "button",
-                    disabled: loading_more(),
+                    disabled: pagination.loading(),
                     onclick: move |_| {
-                        loading_more.set(true);
-                        load_error.set(None);
+                        pagination.start_loading();
                         spawn(async move {
                             match api::list_downloads(Some(cursor), api::PAGE_SIZE).await {
                                 Ok(next) => {
-                                    extra_downloads.write().extend(next.downloads);
-                                    next_before_id.set(next.next_before_id);
-                                    loaded_more.set(true);
+                                    pagination.append(next.downloads, next.next_before_id);
                                 }
                                 Err(error) => {
-                                    load_error.set(Some(view::server_error_message(error)));
+                                    pagination.fail(view::server_error_message(error));
                                 }
                             }
-                            loading_more.set(false);
                         });
                     },
-                    if loading_more() { "加载中…" } else { "加载更多" }
+                    if pagination.loading() { "加载中…" } else { "加载更多" }
                 }
             } else if has_downloads {
                 p { class: "text-center text-xs text-zinc-400", "已经到底了" }
@@ -149,7 +116,19 @@ pub fn DownloadsPage() -> Element {
 }
 
 #[component]
-fn DownloadCard(download: Download, on_changed: EventHandler<()>) -> Element {
+fn DownloadCard(
+    download: Download,
+    progress: Option<(i64, Option<i64>)>,
+    on_changed: EventHandler<()>,
+) -> Element {
+    let mut download = download;
+    if let Some((downloaded_bytes, total_bytes)) = progress {
+        download.downloaded_bytes = downloaded_bytes;
+        if total_bytes.is_some() {
+            download.total_bytes = total_bytes;
+        }
+    }
+
     let (status_label, status_class) = view::status_presentation(download.status);
     let artists = view::artists(&download.metadata.artists);
     let progress = view::progress_percent(&download);
@@ -273,8 +252,19 @@ fn DownloadActionButton(
     on_changed: EventHandler<()>,
 ) -> Element {
     let mut armed = use_signal(|| false);
-    let mut busy = use_signal(|| false);
-    let mut error = use_signal(|| None::<String>);
+    let mut armed_task = armed;
+    let mut change_download = use_action(move |(id, action): (i64, DownloadAction)| async move {
+        match api::change_download(id, action).await {
+            Ok(()) => {
+                on_changed.call(());
+                Ok(())
+            }
+            Err(error) => {
+                armed_task.set(false);
+                Err(std::io::Error::other(view::server_error_message(error)))
+            }
+        }
+    });
 
     rsx! {
         button {
@@ -284,27 +274,16 @@ fn DownloadActionButton(
                 "block w-full rounded-sm px-2.5 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
             },
             r#type: "button",
-            disabled: busy(),
+            disabled: change_download.pending(),
             onclick: move |_| {
                 if dangerous && !armed() {
                     armed.set(true);
                     return;
                 }
 
-                busy.set(true);
-                error.set(None);
-                spawn(async move {
-                    match api::change_download(id, action).await {
-                        Ok(()) => on_changed.call(()),
-                        Err(response_error) => {
-                            error.set(Some(view::server_error_message(response_error)));
-                            armed.set(false);
-                        }
-                    }
-                    busy.set(false);
-                });
+                change_download.call((id, action));
             },
-            if busy() {
+            if change_download.pending() {
                 "处理中…"
             } else if dangerous && armed() {
                 "再次点击确认"
@@ -312,8 +291,8 @@ fn DownloadActionButton(
                 "{label}"
             }
         }
-        if let Some(message) = error() {
-            span { class: "block px-2.5 py-1 text-xs text-red-600", "{message}" }
+        if let Some(Err(error)) = change_download.value() {
+            span { class: "block px-2.5 py-1 text-xs text-red-600", "{error}" }
         }
     }
 }

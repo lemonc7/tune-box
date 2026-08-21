@@ -1,8 +1,9 @@
+use dioxus::fullstack::ServerEvents;
 use dioxus::prelude::*;
 #[cfg(feature = "server")]
 use dioxus::server::axum::Extension;
 use shared::{
-    download::{DownloadAction, DownloadPage},
+    download::{DownloadAction, DownloadEvent, DownloadPage},
     library::LibrarySnapshot,
     music::{MusicResult, Track},
     request::SearchRequest,
@@ -10,6 +11,8 @@ use shared::{
 
 #[cfg(feature = "server")]
 use shared::request::CreateDownloadRequest;
+#[cfg(feature = "server")]
+use tokio::sync::broadcast::error::RecvError;
 
 pub const PAGE_SIZE: i64 = 20;
 
@@ -59,6 +62,25 @@ pub async fn list_downloads(before_id: Option<i64>, limit: i64) -> ServerFnResul
         .list_downloads(before_id, limit)
         .await
         .map_err(ServerFnError::new)
+}
+
+#[get("/api/downloads/events", state: Extension<crate::state::AppState>)]
+pub async fn download_events() -> ServerFnResult<ServerEvents<DownloadEvent>> {
+    let mut receiver = state.download_events.subscribe();
+
+    Ok(ServerEvents::new(move |mut sender| async move {
+        loop {
+            let event = match receiver.recv().await {
+                Ok(event) => event,
+                // 客户端落后时关闭本次流，让它重连并从数据库恢复一致状态。
+                Err(RecvError::Lagged(_)) => break,
+                Err(RecvError::Closed) => break,
+            };
+            if sender.send(event).await.is_err() {
+                break;
+            }
+        }
+    }))
 }
 
 #[server(state: Extension<crate::state::AppState>)]

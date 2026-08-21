@@ -208,7 +208,7 @@ impl Repository {
         let result = sqlx::query!(
             r#"
             UPDATE downloads
-            SET status = CASE WHEN path IS NULL THEN 'pending' ELSE 'downloading' END,
+            SET status = CASE WHEN path IS NULL THEN 'pending' ELSE 'downloaded' END,
                 retry_count = 0,
                 next_retry_at = NULL,
                 error_message = NULL,

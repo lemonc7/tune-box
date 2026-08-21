@@ -9,11 +9,11 @@ service = { path = "../service", optional = true }
 
 dioxus.workspace = true
 url.workspace = true
-gloo-timers = { version = "0.3", features = ["futures"], optional = true }
+gloo-timers = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["server"]
 web = ["dioxus/web", "dep:gloo-timers"]
 server = ["dioxus/server", "dep:service", "dep:tokio", "dep:tokio-util"]
