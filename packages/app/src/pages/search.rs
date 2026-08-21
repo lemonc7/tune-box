@@ -8,6 +8,7 @@ use crate::{
     api,
     components::{EmptyState, ErrorBanner, InfiniteScrollTrigger, NoticeBanner, PreviewTrack},
     hooks::{MusicSearchState, use_music_search},
+    ui::{Button, ButtonSize},
     view,
 };
 
@@ -85,8 +86,9 @@ pub fn SearchPage() -> Element {
                   placeholder: "歌曲、歌手或专辑",
                   oninput: move |event| query.set(event.value()),
                 }
-                button {
-                  class: "inline-flex h-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-50",
+                Button {
+                  class: "shrink-0",
+                  size: ButtonSize::Lg,
                   r#type: "submit",
                   disabled: search.loading(),
                   if search.loading() {

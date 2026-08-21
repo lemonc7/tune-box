@@ -2,6 +2,7 @@ mod api;
 mod components;
 mod hooks;
 mod pages;
+pub mod ui;
 mod view;
 
 #[cfg(feature = "server")]
