@@ -1,19 +1,16 @@
 mod api;
-mod components;
-mod hooks;
-mod pages;
-pub mod ui;
-mod view;
-
+pub mod components;
 #[cfg(feature = "server")]
 mod error;
+mod hooks;
+mod pages;
 #[cfg(feature = "server")]
 mod server;
-
+mod view;
 use dioxus::prelude::*;
-
-use components::{AppLayout, ErrorLayout};
 use pages::{DownloadsPage as Downloads, LibraryPage as Library, SearchPage as Search};
+
+use crate::{components::*, hooks::use_music_search_session};
 
 static CSS: Asset = asset!("/assets/tailwind.css");
 
@@ -43,8 +40,14 @@ enum Route {
 
 #[component]
 fn App() -> Element {
+    let player = use_signal(|| None::<PreviewTrack>);
+    use_context_provider(|| player);
+    let search_session = use_music_search_session();
+    use_context_provider(|| search_session);
+
     rsx! {
       document::Stylesheet { href: CSS }
       Router::<Route> {}
+      Player {}
     }
 }
