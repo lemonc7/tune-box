@@ -18,6 +18,13 @@ pub struct MusicSearch {
     generation: Signal<u64>,
 }
 
+#[derive(Clone, Copy)]
+pub struct MusicSearchSession {
+    pub provider: Signal<Option<String>>,
+    pub query: Signal<String>,
+    pub search: MusicSearch,
+}
+
 impl Clone for MusicSearch {
     fn clone(&self) -> Self {
         *self
@@ -128,5 +135,13 @@ pub fn use_music_search() -> MusicSearch {
         loading_more: use_signal(|| false),
         load_more_error: use_signal(|| None),
         generation: use_signal(|| 0),
+    }
+}
+
+pub fn use_music_search_session() -> MusicSearchSession {
+    MusicSearchSession {
+        provider: use_signal(|| None),
+        query: use_signal(String::new),
+        search: use_music_search(),
     }
 }
