@@ -11,7 +11,7 @@ impl Repository {
     ) -> Result<Option<i64>, sqlx::Error> {
         let metadata = Json(metadata);
 
-        sqlx::query_scalar!(
+        let id = sqlx::query_scalar!(
             r#"
             INSERT INTO downloads (
                 provider,
@@ -28,7 +28,11 @@ impl Repository {
             metadata,
         )
         .fetch_optional(&self.pool)
-        .await
+        .await?;
+        if let Some(id) = id {
+            self.notify_download_changed(id);
+        }
+        Ok(id)
     }
 
     pub async fn list_downloads(
@@ -67,7 +71,7 @@ impl Repository {
     pub async fn claim_next(&self, running_ids: &[i64]) -> Result<Option<Download>, sqlx::Error> {
         // 暂停/取消后的旧worker可能尚未完全退出，把当前仍在运行的任务排除掉
         let running_ids = Json(running_ids);
-        sqlx::query_as!(
+        let download = sqlx::query_as!(
             Download,
             r#"
             UPDATE downloads
@@ -117,7 +121,11 @@ impl Repository {
             running_ids,
         )
         .fetch_optional(&self.pool)
-        .await
+        .await?;
+        if let Some(download) = &download {
+            self.notify_download_changed(download.id);
+        }
+        Ok(download)
     }
 
     pub async fn mark_downloading(&self, id: i64, version: i64) -> Result<bool, sqlx::Error> {
@@ -136,7 +144,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     pub async fn mark_downloaded(
@@ -171,7 +183,7 @@ impl Repository {
         .await?;
         let changed = result.rows_affected() == 1;
         if changed {
-            self.notify_downloaded(id);
+            self.notify_download_changed(id);
         }
         Ok(changed)
     }

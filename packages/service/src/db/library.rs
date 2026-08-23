@@ -91,6 +91,7 @@ impl Repository {
         }
 
         tx.commit().await?;
+        self.notify_download_changed(id);
         Ok(true)
     }
 
@@ -305,19 +306,23 @@ impl Repository {
         let Some(row) = row else {
             return Ok(false);
         };
+        let download_id = row.download_id;
 
         // 删除歌曲
         sqlx::query!("DELETE FROM songs WHERE id = ?", id)
             .execute(&mut *tx)
             .await?;
         // 删除记录
-        if let Some(download_id) = row.download_id {
+        if let Some(download_id) = download_id {
             sqlx::query!("DELETE FROM downloads WHERE id = ?", download_id)
                 .execute(&mut *tx)
                 .await?;
         }
 
         tx.commit().await?;
+        if let Some(download_id) = download_id {
+            self.notify_download_changed(download_id);
+        }
         Ok(true)
     }
 }

@@ -31,7 +31,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     // 标签失败后重新排队
@@ -62,7 +66,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     // pause/cancel/shutdown引起的中断不会消耗重试次数
@@ -90,7 +98,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     pub async fn requeue_interrupted_tagging(
@@ -117,7 +129,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     // 达到指定重试次数，标记失败
@@ -145,7 +161,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     pub async fn cancel_download(&self, id: i64) -> Result<bool, sqlx::Error> {
@@ -166,7 +186,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     pub async fn pause_download(&self, id: i64) -> Result<bool, sqlx::Error> {
@@ -182,7 +206,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     pub async fn resume_download(&self, id: i64) -> Result<bool, sqlx::Error> {
@@ -201,7 +229,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     pub async fn retry_download(&self, id: i64) -> Result<bool, sqlx::Error> {
@@ -221,7 +253,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     pub async fn delete_download(&self, id: i64) -> Result<bool, sqlx::Error> {
@@ -235,7 +271,11 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 
     // 恢复数据库中执行到一半的下载任务状态
@@ -288,6 +328,10 @@ impl Repository {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let changed = result.rows_affected() == 1;
+        if changed {
+            self.notify_download_changed(id);
+        }
+        Ok(changed)
     }
 }

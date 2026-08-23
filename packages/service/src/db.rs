@@ -117,8 +117,8 @@ impl Repository {
             .progress(id, downloaded_bytes, total_bytes);
     }
 
-    pub(crate) fn notify_downloaded(&self, id: i64) {
-        self.download_events.downloaded(id);
+    pub(crate) fn notify_download_changed(&self, id: i64) {
+        self.download_events.changed(id);
     }
 }
 
@@ -237,7 +237,7 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap(),
-            DownloadEvent::Downloaded { id: resolving.id }
+            DownloadEvent::Changed { id: resolving.id }
         );
 
         let tagging = repository.claim_next(&[]).await.unwrap().unwrap();
@@ -252,5 +252,52 @@ mod tests {
 
         let retried = repository.claim_next(&[]).await.unwrap().unwrap();
         assert!(matches!(retried.status, Status::Tagging));
+    }
+
+    #[tokio::test]
+    async fn completing_tagging_publishes_a_changed_event() {
+        let repository = Repository::new(connect_memory().await.unwrap());
+        repository
+            .add_download("provider", "track", &metadata())
+            .await
+            .unwrap();
+
+        let resolving = repository.claim_next(&[]).await.unwrap().unwrap();
+        assert!(
+            repository
+                .mark_downloading(resolving.id, resolving.version)
+                .await
+                .unwrap()
+        );
+        assert!(
+            repository
+                .mark_downloaded(resolving.id, resolving.version, "ready.flac", 42)
+                .await
+                .unwrap()
+        );
+        let tagging = repository.claim_next(&[]).await.unwrap().unwrap();
+        assert!(matches!(tagging.status, Status::Tagging));
+
+        let mut events = repository.download_events().subscribe();
+        assert!(
+            repository
+                .complete_with_song(
+                    tagging.id,
+                    tagging.version,
+                    "completed.flac",
+                    42,
+                    &metadata(),
+                )
+                .await
+                .unwrap()
+        );
+
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), events.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            DownloadEvent::Changed { id: tagging.id }
+        );
     }
 }

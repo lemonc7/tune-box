@@ -30,7 +30,7 @@ impl DownloadEvents {
         });
     }
 
-    pub(crate) fn downloaded(&self, id: i64) {
-        let _ = self.sender.send(DownloadEvent::Downloaded { id });
+    pub(crate) fn changed(&self, id: i64) {
+        let _ = self.sender.send(DownloadEvent::Changed { id });
     }
 }
