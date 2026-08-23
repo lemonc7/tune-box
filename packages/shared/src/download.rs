@@ -44,7 +44,7 @@ pub enum DownloadAction {
     Delete,
 }
 
-// 正在下载的任务写入了新的进度。
+// 高频进度直接更新界面；低频状态变化只通知客户端重新读取数据库。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DownloadEvent {
@@ -53,8 +53,7 @@ pub enum DownloadEvent {
         downloaded_bytes: i64,
         total_bytes: Option<i64>,
     },
-    // 音频文件下载完成，客户端可丢弃该任务的实时进度。
-    Downloaded {
+    Changed {
         id: i64,
     },
 }
