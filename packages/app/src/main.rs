@@ -9,7 +9,7 @@ mod server;
 mod view;
 use crate::{
     components::{AppLayout, ErrorLayout, PlayerBar},
-    hooks::{MusicProviders, use_music_search_provider, use_player_provider},
+    hooks::{use_music_search_provider, use_player_provider},
     pages::*,
 };
 use dioxus::prelude::*;
@@ -50,17 +50,7 @@ fn App() -> Element {
     rsx! {
       document::Stylesheet { href: CSS }
       PlayerBar {}
-      RouterHost {}
-    }
-}
-
-// Provider 数据在这个持久组件中只加载一次，不跟随具体页面卸载。
-#[component]
-fn RouterHost() -> Element {
-    let providers = use_server_future(api::list_providers)?;
-    use_context_provider(|| MusicProviders(providers));
-
-    rsx! {
-      Router::<Route> {}
+      // 路由数据暂停时不能冒泡到Dioxus默认根边界，否则根边界会暂时卸载播放器。
+      SuspenseBoundary { fallback: |_| rsx! {}, Router::<Route> {} }
     }
 }

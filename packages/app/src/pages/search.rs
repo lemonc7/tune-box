@@ -9,15 +9,13 @@ use dioxus_icons::lucide::{ChevronDown, Download, LoaderCircle, Music2, Play, Se
 use crate::{
     api::{self, PAGE_SIZE},
     components::{Empty, ErrorCard, Loading},
-    hooks::{
-        MusicProviders, MusicSearchSession, MusicSearchState, use_music_search_session, use_player,
-    },
+    hooks::{MusicSearchSession, MusicSearchState, use_music_search_session, use_player},
     view,
 };
 
 #[component]
 pub fn SearchPage() -> Element {
-    let MusicProviders(mut provider_resource) = use_context::<MusicProviders>();
+    let mut provider_resource = use_server_future(api::list_providers)?;
     let MusicSearchSession {
         mut provider,
         mut query,
@@ -43,14 +41,12 @@ pub fn SearchPage() -> Element {
         }
     };
 
-    // 默认选择第一个音乐源
-    if provider().is_none()
-        && let Some(default_provider) = providers.first()
-    {
-        provider.set(Some(default_provider.clone()));
-    }
-
-    let selected_provider = provider().unwrap_or_default();
+    // 不在渲染期间写Signal；已选来源失效时也自动回退到当前第一个来源。
+    let selected_provider = provider()
+        .filter(|selected| providers.contains(selected))
+        .or_else(|| providers.first().cloned());
+    let submit_provider = selected_provider.clone();
+    let retry_provider = selected_provider.clone();
     let providers_empty = providers.is_empty();
     let search_state = search.state();
 
@@ -68,7 +64,7 @@ pub fn SearchPage() -> Element {
             class: "mt-5 flex flex-col gap-3 sm:flex-row",
             onsubmit: move |event| {
                 event.prevent_default();
-                let Some(provider) = provider() else {
+                let Some(provider) = submit_provider.clone() else {
                     search.fail("请选择音乐来源");
                     return;
                 };
@@ -94,7 +90,7 @@ pub fn SearchPage() -> Element {
                 class: "h-10 w-full min-w-32 appearance-none rounded-md border border-input",
                 class: "bg-background py-0 pl-3 pr-9 text-sm text-foreground outline-none",
                 class: "focus-visible:ring-2 focus-visible:ring-ring/50",
-                value: selected_provider,
+                value: selected_provider.unwrap_or_default(),
                 disabled: providers_empty || search.loading(),
                 onchange: move |event| provider.set(Some(event.value())),
                 for provider in providers {
@@ -164,7 +160,7 @@ pub fn SearchPage() -> Element {
                   title: "搜索失败",
                   description: message,
                   retry: move |_| {
-                      let Some(provider) = provider() else { return };
+                      let Some(provider) = retry_provider.clone() else { return };
                       let query = query().trim().to_owned();
                       if query.is_empty() {
                           return;
@@ -208,7 +204,7 @@ pub fn SearchPage() -> Element {
                         list_scroll_top.set(event.data().scroll_top());
                     },
                     div { class: "divide-y divide-border",
-                      for track in result.tracks {
+                      for track in result.tracks.iter().cloned() {
                         TrackItem { key: "{track.provider}:{track.id}", track }
                       }
                     }

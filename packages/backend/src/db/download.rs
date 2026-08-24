@@ -4,6 +4,31 @@ use sqlx::types::Json;
 use crate::db::{Download, Repository, Status};
 
 impl Repository {
+    pub async fn get_download(&self, id: i64) -> Result<Option<Download>, sqlx::Error> {
+        sqlx::query_as!(
+            Download,
+            r#"
+            SELECT
+                id,
+                provider,
+                track_id,
+                metadata AS "metadata!: Json<Metadata>",
+                status AS "status!: Status",
+                downloaded_bytes,
+                total_bytes,
+                version,
+                retry_count,
+                path,
+                error_message
+            FROM downloads
+            WHERE id = ?
+            "#,
+            id,
+        )
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     pub async fn add_download(
         &self,
         provider: &str,

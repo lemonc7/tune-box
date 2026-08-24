@@ -13,6 +13,7 @@ type DownloadProgress = HashMap<i64, (i64, Option<i64>)>;
 pub struct DownloadEvents {
     progress: Signal<DownloadProgress>,
     error: Signal<Option<String>>,
+    connected: Signal<bool>,
 }
 
 impl DownloadEvents {
@@ -24,22 +25,25 @@ impl DownloadEvents {
         self.error.read().clone()
     }
 
-    pub fn clear_progress(&mut self) {
-        self.progress.write().clear();
+    pub fn connected(&self) -> bool {
+        (self.connected)()
     }
 }
 
 // 订阅下载进度事件。数据库中的下载记录是最终状态，事件只用于实时更新界面。
-pub fn use_download_events(refresh: Callback<()>) -> DownloadEvents {
+pub fn use_download_events(refresh: Callback<()>, changed: Callback<i64>) -> DownloadEvents {
     let progress = use_signal(DownloadProgress::new);
     let error = use_signal(|| None::<String>);
+    let connected = use_signal(|| false);
 
     #[cfg(feature = "web")]
     let mut progress_task = progress;
     #[cfg(feature = "web")]
     let mut error_task = error;
+    #[cfg(feature = "web")]
+    let mut connected_task = connected;
     #[cfg(not(feature = "web"))]
-    let _ = refresh;
+    let _ = (refresh, changed);
 
     let _events_task = use_future(move || async move {
         #[cfg(feature = "web")]
@@ -52,6 +56,7 @@ pub fn use_download_events(refresh: Callback<()>) -> DownloadEvents {
                     // 重置重连退避
                     retry_ms = INITIAL_RETRY_MS;
                     error_task.set(None);
+                    connected_task.set(true);
                     // 重连后丢弃可能过期的进度，并从数据库恢复最终状态。
                     progress_task.write().clear();
                     // 从数据库重新获取可信状态
@@ -72,8 +77,8 @@ pub fn use_download_events(refresh: Callback<()>) -> DownloadEvents {
                             }
                             Ok(DownloadEvent::Changed { id }) => {
                                 progress_task.write().remove(&id);
-                                // 事件只负责使缓存失效，数据库中的记录才是最终状态。
-                                refresh.call(());
+                                // 只读取变化的任务，避免状态变化导致整个分页列表被重置。
+                                changed.call(id);
                             }
                             Err(error) => {
                                 error_task.set(Some(format!("实时连接中断：{error}")));
@@ -85,8 +90,10 @@ pub fn use_download_events(refresh: Callback<()>) -> DownloadEvents {
                     if error_task().is_none() {
                         error_task.set(Some("实时连接已断开，正在重连…".to_owned()));
                     }
+                    connected_task.set(false);
                 }
                 Err(error) => {
+                    connected_task.set(false);
                     error_task.set(Some(format!(
                         "无法建立实时连接：{}",
                         view::server_error_message(error)
@@ -102,7 +109,11 @@ pub fn use_download_events(refresh: Callback<()>) -> DownloadEvents {
         std::future::pending::<()>().await;
     });
 
-    DownloadEvents { progress, error }
+    DownloadEvents {
+        progress,
+        error,
+        connected,
+    }
 }
 
 // 平台相关的重连等待集中在这里；添加 desktop/mobile 时不需要修改 Hook 接口。
