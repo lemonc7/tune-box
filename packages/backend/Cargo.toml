@@ -1,10 +1,10 @@
 [package]
-name = "service"
+name = "tune-box-backend"
 edition.workspace = true
 version.workspace = true
 
 [dependencies]
-shared = { path = "../shared" }
+contracts = { path = "../contracts", package = "tune-box-contracts" }
 
 async-trait.workspace = true
 futures-util.workspace = true

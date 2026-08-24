@@ -1,5 +1,5 @@
+use contracts::{music::MusicResult, request::SearchRequest};
 use dioxus::prelude::*;
-use shared::{music::MusicResult, request::SearchRequest};
 
 use crate::{api, view};
 

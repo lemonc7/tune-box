@@ -1,5 +1,13 @@
 use std::{net::SocketAddr, sync::Arc};
 
+use backend::{
+    backend::Backend,
+    config::{Config, load_config},
+    events::DownloadEvents,
+    manager::{Manager, ManagerHandle},
+    service::Service,
+};
+use contracts::request::PreviewRequest;
 use dioxus::{
     CapturedError,
     logger::tracing,
@@ -12,14 +20,6 @@ use dioxus::{
         routing::get,
     },
 };
-use service::{
-    backend::Backend,
-    config::{Config, load_config},
-    events::DownloadEvents,
-    manager::{Manager, ManagerHandle},
-    service::Service,
-};
-use shared::request::PreviewRequest;
 use tokio::{net::TcpListener, signal};
 use tokio_util::sync::CancellationToken;
 
@@ -74,7 +74,7 @@ async fn serve(
     service: Arc<Service>,
     manager: Manager,
     manager_handle: ManagerHandle,
-    download_events: service::events::DownloadEvents,
+    download_events: backend::events::DownloadEvents,
 ) -> dioxus::Result<()> {
     let state = AppState::new(service, manager_handle.clone(), download_events);
 

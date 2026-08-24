@@ -1,11 +1,11 @@
 [package]
-name = "app"
+name = "tune-box"
 edition.workspace = true
 version.workspace = true
 
 [dependencies]
-shared = { path = "../shared" }
-service = { path = "../service", optional = true }
+contracts = { path = "../contracts", package = "tune-box-contracts" }
+backend = { path = "../backend", package = "tune-box-backend", optional = true }
 
 dioxus.workspace = true
 url.workspace = true
@@ -18,4 +18,4 @@ dioxus-icons.workspace = true
 [features]
 default = []
 web = ["dioxus/web", "dep:gloo-timers"]
-server = ["dioxus/server", "dep:service", "dep:tokio", "dep:tokio-util"]
+server = ["dioxus/server", "dep:backend", "dep:tokio", "dep:tokio-util"]

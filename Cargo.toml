@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["packages/app", "packages/service", "packages/shared"]
+members = ["packages/app", "packages/backend", "packages/contracts"]
 
 
 [workspace.package]

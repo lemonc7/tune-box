@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use contracts::music::Metadata;
 use futures_util::StreamExt;
 use lofty::{
     config::ParseOptions,
@@ -19,7 +20,6 @@ use reqwest::{
     dns::{Addrs, Name, Resolve, Resolving},
     redirect,
 };
-use shared::music::Metadata;
 
 use crate::{error::TagError, tag::flac_writer};
 

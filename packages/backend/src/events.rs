@@ -1,4 +1,4 @@
-use shared::download::DownloadEvent;
+use contracts::download::DownloadEvent;
 use tokio::sync::broadcast;
 
 const DOWNLOAD_EVENT_CAPACITY: usize = 64;

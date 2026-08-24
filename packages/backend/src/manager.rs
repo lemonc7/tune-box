@@ -358,7 +358,7 @@ impl ManagerHandle {
 mod tests {
     use std::{collections::HashMap, sync::Arc, time::Duration};
 
-    use shared::music::Metadata;
+    use contracts::music::Metadata;
     use tokio::task::JoinSet;
     use tokio_util::sync::CancellationToken;
 
