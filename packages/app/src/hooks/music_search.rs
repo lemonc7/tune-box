@@ -25,8 +25,13 @@ pub struct MusicSearch {
 pub struct MusicSearchSession {
     pub provider: Signal<Option<String>>,
     pub query: Signal<String>,
+    pub list_scroll_top: Signal<f64>,
     pub search: MusicSearch,
 }
+
+// 由持久的路由宿主创建，搜索页只消费它，避免每次进入搜索页重新触发 Suspense。
+#[derive(Clone, Copy)]
+pub struct MusicProviders(pub Resource<ServerFnResult<Vec<String>>>);
 
 impl Clone for MusicSearch {
     fn clone(&self) -> Self {
@@ -160,10 +165,17 @@ pub fn use_music_search() -> MusicSearch {
     }
 }
 
-pub fn use_music_search_session() -> MusicSearchSession {
-    MusicSearchSession {
+pub fn use_music_search_provider() -> MusicSearchSession {
+    let session = MusicSearchSession {
         provider: use_signal(|| None),
         query: use_signal(String::new),
+        list_scroll_top: use_signal(|| 0.0),
         search: use_music_search(),
-    }
+    };
+    use_context_provider(|| session);
+    session
+}
+
+pub fn use_music_search_session() -> MusicSearchSession {
+    use_context::<MusicSearchSession>()
 }

@@ -9,7 +9,7 @@ mod server;
 mod view;
 use crate::{
     components::{AppLayout, ErrorLayout, PlayerBar},
-    hooks::use_player_provider,
+    hooks::{MusicProviders, use_music_search_provider, use_player_provider},
     pages::*,
 };
 use dioxus::prelude::*;
@@ -46,10 +46,21 @@ enum Route {
 #[component]
 fn App() -> Element {
     use_player_provider();
+    use_music_search_provider();
     rsx! {
       document::Stylesheet { href: CSS }
-      Router::<Route> {}
-      // 放到Router外部，路由切换不会卸载播放器
       PlayerBar {}
+      RouterHost {}
+    }
+}
+
+// Provider 数据在这个持久组件中只加载一次，不跟随具体页面卸载。
+#[component]
+fn RouterHost() -> Element {
+    let providers = use_server_future(api::list_providers)?;
+    use_context_provider(|| MusicProviders(providers));
+
+    rsx! {
+      Router::<Route> {}
     }
 }
