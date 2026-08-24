@@ -1,4 +1,4 @@
-FROM rust:1.95-slim-bookworm AS chef
+FROM rust:1.95-slim-trixie AS chef
 
 WORKDIR /app
 
@@ -26,7 +26,7 @@ ENV PATH="/.cargo/bin:$PATH"
 ENV SQLX_OFFLINE=true
 RUN dx bundle --package tune-box --web --release
 
-FROM gcr.io/distroless/cc-debian12:latest AS runtime
+FROM gcr.io/distroless/cc-debian13:latest AS runtime
 
 WORKDIR /app
 ENV RUST_LOG=info,dioxus_server=warn,hyper_util=warn
