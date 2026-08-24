@@ -45,7 +45,11 @@ pub fn AppLayout() -> Element {
                     bg-background text-primary shadow-sm \
                     hover:bg-background hover:text-primary",
                 aria_label: "搜索",
-                Search { size: 16 }
+                span {
+                  class: "inline-flex shrink-0",
+                  aria_hidden: true,
+                  Search { size: 16 }
+                }
                 span { class: "hidden sm:inline", "搜索" }
               }
               Link {
@@ -59,7 +63,11 @@ pub fn AppLayout() -> Element {
                     bg-background text-primary shadow-sm \
                     hover:bg-background hover:text-primary",
                 aria_label: "下载",
-                Download { size: 16 }
+                span {
+                  class: "inline-flex shrink-0",
+                  aria_hidden: true,
+                  Download { size: 16 }
+                }
                 span { class: "hidden sm:inline", "下载" }
               }
               Link {
@@ -73,7 +81,11 @@ pub fn AppLayout() -> Element {
                     bg-background text-primary shadow-sm \
                     hover:bg-background hover:text-primary",
                 aria_label: "曲库",
-                Library { size: 16 }
+                span {
+                  class: "inline-flex shrink-0",
+                  aria_hidden: true,
+                  Library { size: 16 }
+                }
                 span { class: "hidden sm:inline", "曲库" }
               }
             }
@@ -91,7 +103,7 @@ pub fn ErrorLayout() -> Element {
     rsx! {
       main {
         class: "mx-auto flex min-h-0 w-full max-w-7xl",
-        class: "flex-1 flex-col overflow-y-auto",
+        class: "flex-1 flex-col overflow-hidden",
         class: "px-4 py-4 sm:px-6 sm:py-5 lg:px-8",
         class: if player.is_active() { "pb-28 sm:pb-28" },
         ErrorBoundary {

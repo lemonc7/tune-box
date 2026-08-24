@@ -70,7 +70,9 @@ pub fn PlayerBar() -> Element {
             r#type: "button",
             aria_label: "关闭播放器",
             onclick: move |_| player.close(),
-            X { size: 18 }
+            span { class: "inline-flex shrink-0", aria_hidden: true,
+              X { size: 18 }
+            }
           }
         }
       }

@@ -35,7 +35,11 @@ pub fn ErrorCard(
               class: "focus-visible:ring-2 focus-visible:ring-ring/50",
               r#type: "button",
               onclick: move |_| retry.call(()),
-              RefreshCw { size: 14 }
+              span {
+                class: "inline-flex shrink-0",
+                aria_hidden: true,
+                RefreshCw { size: 14 }
+              }
               "重试"
             }
           }
@@ -54,6 +58,7 @@ pub fn ErrorPage(code: u16, title: String, message: String) -> Element {
         div {
           class: "flex size-12 items-center justify-center",
           class: "rounded-xl bg-destructive/10 text-destructive",
+          aria_hidden: true,
           CircleAlert { size: 24 }
         }
         div { class: "mt-6 text-sm font-medium text-destructive", "错误 {code}" }
@@ -76,7 +81,9 @@ pub fn ErrorPage(code: u16, title: String, message: String) -> Element {
               rounded-md bg-primary px-4 text-sm font-medium \
               text-primary-foreground no-underline \
               transition-colors hover:bg-primary/80",
-          House { size: 16 }
+          span { class: "inline-flex shrink-0", aria_hidden: true,
+            House { size: 16 }
+          }
           "返回首页"
         }
       }
