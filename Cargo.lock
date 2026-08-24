@@ -39,21 +39,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "app"
-version = "0.3.1"
-dependencies = [
- "dioxus",
- "dioxus-icons",
- "dioxus-primitives",
- "gloo-timers",
- "service",
- "shared",
- "tokio",
- "tokio-util",
- "url",
-]
-
-[[package]]
 name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3753,30 +3738,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "service"
-version = "0.3.1"
-dependencies = [
- "async-trait",
- "futures-util",
- "garde",
- "lofty",
- "moka",
- "reqwest 0.13.4",
- "rmcp",
- "serde",
- "serde_json",
- "shared",
- "sqlx",
- "thiserror 2.0.20",
- "time",
- "tokio",
- "tokio-util",
- "toml",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "sha1"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3827,14 +3788,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
-]
-
-[[package]]
-name = "shared"
-version = "0.3.1"
-dependencies = [
- "garde",
- "serde",
 ]
 
 [[package]]
@@ -4648,6 +4601,53 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "tune-box"
+version = "0.3.1"
+dependencies = [
+ "dioxus",
+ "dioxus-icons",
+ "dioxus-primitives",
+ "gloo-timers",
+ "tokio",
+ "tokio-util",
+ "tune-box-backend",
+ "tune-box-contracts",
+ "url",
+]
+
+[[package]]
+name = "tune-box-backend"
+version = "0.3.1"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "garde",
+ "lofty",
+ "moka",
+ "reqwest 0.13.4",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.20",
+ "time",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tracing",
+ "tune-box-contracts",
+ "url",
+]
+
+[[package]]
+name = "tune-box-contracts"
+version = "0.3.1"
+dependencies = [
+ "garde",
+ "serde",
+]
 
 [[package]]
 name = "tungstenite"

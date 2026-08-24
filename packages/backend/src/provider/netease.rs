@@ -4,11 +4,11 @@ use std::{
 };
 
 use async_trait::async_trait;
+use contracts::music::{MusicResult, Track as SearchTrack};
 use futures_util::{StreamExt, stream};
 use reqwest::{StatusCode, Url, header};
 use serde::{Deserialize, Deserializer, de::DeserializeOwned};
 use serde_json::Value;
-use shared::music::{MusicResult, Track as SearchTrack};
 use time::{OffsetDateTime, UtcOffset};
 
 use crate::{

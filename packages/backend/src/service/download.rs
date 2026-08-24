@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use ::time::{Duration as TimeDuration, OffsetDateTime};
+use contracts::{download::DownloadPage, music::Metadata, request::CreateDownloadRequest};
 use garde::Validate;
-use shared::{download::DownloadPage, music::Metadata, request::CreateDownloadRequest};
 use tokio::{sync::watch, time};
 use tokio_util::sync::CancellationToken;
 

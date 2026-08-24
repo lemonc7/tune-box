@@ -1,5 +1,5 @@
 [package]
-name = "shared"
+name = "tune-box-contracts"
 edition.workspace = true
 version.workspace = true
 

@@ -1,5 +1,5 @@
+use contracts::{music::MusicResult, request::SearchRequest};
 use garde::Validate;
-use shared::{music::MusicResult, request::SearchRequest};
 
 use crate::{
     error::{DownloadError, ServiceError},

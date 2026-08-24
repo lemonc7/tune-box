@@ -12,7 +12,7 @@ use sqlx::{
     types::Json,
 };
 
-use shared::{
+use contracts::{
     download::{Download as SharedDownload, Status as SharedStatus},
     music::Metadata,
 };
@@ -161,7 +161,7 @@ pub async fn connect_memory() -> Result<SqlitePool, DatabaseError> {
 mod tests {
     use std::time::Duration;
 
-    use shared::{download::DownloadEvent, music::Metadata};
+    use contracts::{download::DownloadEvent, music::Metadata};
 
     use super::{Repository, Status, connect_memory};
 

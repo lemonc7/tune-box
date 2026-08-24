@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use dioxus::prelude::*;
 #[cfg(feature = "web")]
-use shared::download::DownloadEvent;
+use contracts::download::DownloadEvent;
+use dioxus::prelude::*;
 
 #[cfg(feature = "web")]
 use crate::{api, view};

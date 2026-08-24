@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use shared::library::SongPage;
+use contracts::library::SongPage;
 use time::OffsetDateTime;
 use tokio::fs;
 

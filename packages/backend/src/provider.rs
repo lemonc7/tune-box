@@ -4,7 +4,7 @@ pub mod netease;
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use shared::music::MusicResult;
+use contracts::music::MusicResult;
 
 use crate::error::ProviderError;
 

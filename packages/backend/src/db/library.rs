@@ -1,4 +1,4 @@
-use shared::library::Song;
+use contracts::library::Song;
 use sqlx::{QueryBuilder, Row, Sqlite, types::Json};
 
 use crate::db::{Metadata, Repository, ScannedSong};

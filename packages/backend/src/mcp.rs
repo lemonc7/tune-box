@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
+use contracts::request::{CreateDownloadRequest, SearchRequest};
 use rmcp::{
     ServerHandler, handler::server::wrapper::Parameters, schemars, tool, tool_handler, tool_router,
 };
 use serde::Deserialize;
-use shared::request::{CreateDownloadRequest, SearchRequest};
 
 use crate::{manager::ManagerHandle, service::Service};
 

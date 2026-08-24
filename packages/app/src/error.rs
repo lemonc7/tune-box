@@ -1,5 +1,5 @@
+use backend::error::{ManagerError, ProviderError, ServiceError};
 use dioxus::server::ServerFnError;
-use service::error::{ManagerError, ProviderError, ServiceError};
 
 pub(crate) trait ServerError {
     fn into(self) -> ServerFnError;

@@ -1,6 +1,7 @@
+use contracts::music::Metadata;
 use sqlx::types::Json;
 
-use crate::db::{Download, Metadata, Repository, Status};
+use crate::db::{Download, Repository, Status};
 
 impl Repository {
     pub async fn add_download(

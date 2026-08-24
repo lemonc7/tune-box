@@ -1,5 +1,5 @@
+use contracts::download::{Download, Status};
 use dioxus::prelude::ServerFnError;
-use shared::download::{Download, Status};
 
 pub fn server_error_message(error: ServerFnError) -> String {
     match error {

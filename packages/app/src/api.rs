@@ -1,15 +1,15 @@
 #[cfg(feature = "server")]
 use crate::error::ServerError;
-use dioxus::fullstack::ServerEvents;
-use dioxus::prelude::*;
-#[cfg(feature = "server")]
-use dioxus::server::axum::Extension;
-use shared::{
+use contracts::{
     download::{DownloadAction, DownloadEvent, DownloadPage},
     library::LibrarySnapshot,
     music::MusicResult,
     request::{CreateDownloadRequest, SearchRequest},
 };
+use dioxus::fullstack::ServerEvents;
+use dioxus::prelude::*;
+#[cfg(feature = "server")]
+use dioxus::server::axum::Extension;
 #[cfg(feature = "server")]
 use tokio::sync::broadcast::error::RecvError;
 
