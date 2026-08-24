@@ -37,8 +37,9 @@ pub async fn create_download(request: CreateDownloadRequest) -> ServerFnResult<S
         .await
         .map_err(ServerError::into)?;
 
-    if created.is_some() {
+    if let Some(id) = created {
         state.manager.wake().await.map_err(ServerError::into)?;
+        dioxus::logger::tracing::info!(task_id = id, "下载任务已创建");
         Ok("已加入下载队列".to_owned())
     } else {
         Ok("下载任务已存在".to_owned())
@@ -66,10 +67,15 @@ pub async fn get_download(id: i64) -> ServerFnResult<Option<Download>> {
 #[get("/api/downloads/events", state: Extension<crate::server::AppState>)]
 pub async fn download_events() -> ServerFnResult<ServerEvents<DownloadEvent>> {
     let mut receiver = state.download_events.subscribe();
+    let shutdown = state.shutdown.clone();
 
     Ok(ServerEvents::new(move |mut sender| async move {
         loop {
-            let event = match receiver.recv().await {
+            let received = tokio::select! {
+                _ = shutdown.cancelled() => break,
+                received = receiver.recv() => received,
+            };
+            let event = match received {
                 Ok(event) => event,
                 // 客户端落后时关闭本次流，让它重连并从数据库恢复一致状态。
                 Err(RecvError::Lagged(_)) => break,
@@ -97,12 +103,18 @@ pub async fn change_download(id: i64, action: DownloadAction) -> ServerFnResult<
     };
 
     if !changed {
-        return Err(ServerFnError::new("任务不存在或当前状态不允许该操作"));
+        return Err(ServerFnError::ServerError {
+            message: "任务不存在或当前状态不允许该操作".to_owned(),
+            code: 409,
+            details: None,
+        });
     }
 
     if matches!(action, DownloadAction::Resume | DownloadAction::Retry) {
         state.manager.wake().await.map_err(ServerError::into)?;
     }
+
+    dioxus::logger::tracing::info!(task_id = id, ?action, "下载任务操作已完成");
 
     Ok(())
 }
@@ -130,11 +142,13 @@ pub async fn load_library(
 
 #[server(state: Extension<crate::server::AppState>)]
 pub async fn sync_library() -> ServerFnResult<i64> {
-    state
+    let count = state
         .service
         .sync_library()
         .await
-        .map_err(ServerError::into)
+        .map_err(ServerError::into)?;
+    dioxus::logger::tracing::info!(song_count = count, "曲库扫描完成");
+    Ok(count)
 }
 
 #[server(state: Extension<crate::server::AppState>)]
@@ -146,8 +160,13 @@ pub async fn delete_song(id: i64) -> ServerFnResult<()> {
         .map_err(ServerError::into)?;
 
     if deleted {
+        dioxus::logger::tracing::info!(song_id = id, "曲库歌曲已删除");
         Ok(())
     } else {
-        Err(ServerFnError::new("歌曲不存在"))
+        Err(ServerFnError::ServerError {
+            message: "歌曲不存在".to_owned(),
+            code: 404,
+            details: None,
+        })
     }
 }

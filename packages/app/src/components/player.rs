@@ -12,9 +12,13 @@ pub fn PlayerBar() -> Element {
         return rsx! {};
     };
 
-    let source = preview_url(&track.provider, &track.id);
+    // revision 只在用户主动播放时变化；路由切换不会改变 src，因此不会重置播放进度。
+    let source = format!(
+        "{}&revision={}",
+        preview_url(&track.provider, &track.id),
+        state.revision
+    );
     let artists = track.artists.join(" / ");
-    let revision = state.revision;
 
     rsx! {
       aside {
@@ -49,7 +53,6 @@ pub fn PlayerBar() -> Element {
 
           div { class: "min-w-0 flex-1",
             audio {
-              key: "{revision}",
               class: "h-10 w-full",
               src: source,
               controls: true,

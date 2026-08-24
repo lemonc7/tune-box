@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO songs (path, name, size, download_id)\n            VALUES (?, ?, ?, ?)\n            ON CONFLICT(path) DO UPDATE SET\n                name = excluded.name,\n                size = excluded.size,\n                download_id = excluded.download_id,\n                updated_at = CURRENT_TIMESTAMP\n            RETURNING id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "songs",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e6f3d4547befd6329c87ea2ab78677b4ef2b00367181ce540ff354da8db9b698"
+}

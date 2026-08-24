@@ -13,8 +13,21 @@ gloo-timers = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
 dioxus-icons.workspace = true
+rmcp = { workspace = true, optional = true }
+subtle = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
 
 [features]
 default = []
 web = ["dioxus/web", "dep:gloo-timers"]
-server = ["dioxus/server", "dep:backend", "dep:tokio", "dep:tokio-util"]
+server = [
+  "dioxus/server",
+  "dep:backend",
+  "dep:rmcp",
+  "dep:subtle",
+  "dep:tokio",
+  "dep:tokio-util",
+  "dep:tower",
+  "dep:tower-http",
+]
