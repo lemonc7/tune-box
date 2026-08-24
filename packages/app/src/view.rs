@@ -1,4 +1,4 @@
-use contracts::download::{Download, Status};
+use contracts::download::Status;
 use dioxus::prelude::ServerFnError;
 
 pub fn server_error_message(error: ServerFnError) -> String {
@@ -33,44 +33,17 @@ pub fn format_bytes(bytes: i64) -> String {
     }
 }
 
-pub fn progress_percent(download: &Download) -> u64 {
-    download
-        .total_bytes
-        .filter(|total| *total > 0)
-        .map(|total| {
-            let downloaded = download.downloaded_bytes.max(0) as u64;
-            downloaded
-                .saturating_mul(100)
-                .checked_div(total as u64)
-                .unwrap_or_default()
-                .min(100)
-        })
-        .unwrap_or_default()
-}
-
 pub fn status_presentation(status: Status) -> (&'static str, &'static str) {
     match status {
-        Status::Pending => ("等待中", "bg-zinc-100 text-zinc-600"),
-        Status::Resolving => ("解析资源", "bg-blue-50 text-blue-600"),
-        Status::Downloading => ("下载中", "bg-indigo-50 text-indigo-600"),
-        Status::Downloaded => ("等待标签", "bg-violet-50 text-violet-600"),
-        Status::Tagging => ("写入标签", "bg-violet-50 text-violet-600"),
-        Status::Paused => ("已暂停", "bg-amber-50 text-amber-600"),
-        Status::Completed => ("已完成", "bg-emerald-50 text-emerald-600"),
-        Status::Failed => ("失败", "bg-red-50 text-red-600"),
-        Status::Cancelled => ("已取消", "bg-zinc-100 text-zinc-500"),
-    }
-}
-
-pub fn extension_class(extension: &str) -> &'static str {
-    match extension {
-        "flac" => "bg-indigo-100 text-indigo-700",
-        "mp3" => "bg-emerald-100 text-emerald-700",
-        "wav" => "bg-cyan-100 text-cyan-700",
-        "m4a" | "aac" => "bg-amber-100 text-amber-700",
-        "ape" => "bg-violet-100 text-violet-700",
-        "ogg" | "opus" => "bg-rose-100 text-rose-700",
-        _ => "bg-zinc-100 text-zinc-600",
+        Status::Pending => ("等待中", "bg-muted text-muted-foreground"),
+        Status::Resolving => ("解析资源", "bg-info/10 text-info"),
+        Status::Downloading => ("下载中", "bg-primary/10 text-primary"),
+        Status::Downloaded => ("等待标签", "bg-processing/10 text-processing"),
+        Status::Tagging => ("写入标签", "bg-processing/10 text-processing"),
+        Status::Paused => ("已暂停", "bg-warning/10 text-warning"),
+        Status::Completed => ("已完成", "bg-success/10 text-success"),
+        Status::Failed => ("失败", "bg-destructive/10 text-destructive"),
+        Status::Cancelled => ("已取消", "bg-muted text-muted-foreground"),
     }
 }
 

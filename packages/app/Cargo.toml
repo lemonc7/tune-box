@@ -12,7 +12,6 @@ url.workspace = true
 gloo-timers = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
-dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
 dioxus-icons.workspace = true
 
 [features]
