@@ -30,8 +30,8 @@ pub fn SearchPage() -> Element {
         Some(Err(error)) => {
             return rsx! {
               ErrorCard {
-                    title: "搜索服务加载失败",
-                    description: view::server_error_message(error),
+                title: "搜索服务加载失败",
+                description: view::server_error_message(error),
                 retry: move |_| provider_resource.restart(),
               }
             };
@@ -222,9 +222,7 @@ pub fn SearchPage() -> Element {
                           retry: move |_| search.load_more(),
                         }
                       }
-                    }
-
-                    if search.has_more() {
+                    } else if search.has_more() {
                       div {
                         class: "flex min-h-20 items-center justify-center py-4",
                         // 哨兵进入列表可视区域后加载下一页。
@@ -246,8 +244,9 @@ pub fn SearchPage() -> Element {
                           }
                         }
                       }
+                    } else {
+                      p { class: "py-5 text-center text-xs text-muted-foreground", "已经到底了" }
                     }
-                    p { class: "py-5 text-center text-xs text-muted-foreground", "已经到底了" }
                   }
                 }
               },
@@ -258,7 +257,7 @@ pub fn SearchPage() -> Element {
 }
 
 #[component]
-pub fn TrackItem(track: Track) -> Element {
+fn TrackItem(track: Track) -> Element {
     let mut player = use_player();
     let mut create_download = use_action(move |track: Track| async move {
         api::create_download(CreateDownloadRequest {

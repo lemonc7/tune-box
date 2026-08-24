@@ -9,7 +9,6 @@ edition = "2024"
 
 [workspace.dependencies]
 dioxus = { version = "0.7", features = ["fullstack", "router"] }
-dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
 dioxus-icons = { version = "0.1.0", default-features = false }
 
 async-trait = "0.1"
