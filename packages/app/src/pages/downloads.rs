@@ -1,4 +1,6 @@
-use contracts::download::Download;
+use std::collections::HashMap;
+
+use contracts::download::{Download, DownloadPage};
 use dioxus::prelude::*;
 use dioxus_icons::lucide::{LoaderCircle, RefreshCw};
 
@@ -40,11 +42,16 @@ pub fn DownloadsPage() -> Element {
     let mut refresh_error = use_signal(|| None::<String>);
     // 防止旧刷新请求覆盖新请求
     let mut refresh_generation = use_signal(|| 0_u64);
+    // 单任务更新版本，防止同一个任务的旧请求覆盖新状态
+    let mut item_generations = use_signal(HashMap::<i64, u64>::new);
+    // 刷新开始后如果收到单任务变化，则放弃可能已经过期的整页结果
+    let mut item_change_epoch = use_signal(|| 0_u64);
     let refresh = Callback::new(move |_: ()| {
         let request_generation = refresh_generation.with_mut(|generation| {
             *generation = generation.wrapping_add(1);
             *generation
         });
+        let request_item_epoch = item_change_epoch();
         refreshing.set(true);
         refresh_error.set(None);
 
@@ -53,12 +60,19 @@ pub fn DownloadsPage() -> Element {
         let mut pagination = pagination;
         let mut refreshing = refreshing;
         let mut refresh_error = refresh_error;
+        let item_change_epoch = item_change_epoch;
 
         spawn(async move {
             let result = api::list_downloads(None, PAGE_SIZE).await;
 
             // 只允许最后一次刷新修改状态
             if generation() != request_generation {
+                return;
+            }
+
+            // 刷新期间有任务发生变化时，单任务查询的结果更新，整页快照不再覆盖它。
+            if item_change_epoch() != request_item_epoch {
+                refreshing.set(false);
                 return;
             }
 
@@ -74,12 +88,62 @@ pub fn DownloadsPage() -> Element {
         });
     });
 
-    // progress事件直接更新内存进度，changed事件触发后台refresh，从数据库读取最终状态
-    let download_events = use_download_events(refresh);
-    let current_page = page();
+    let sync_download = Callback::new(move |id: i64| {
+        let request_generation = item_generations.with_mut(|generations| {
+            let generation = generations.entry(id).or_default();
+            *generation = generation.wrapping_add(1);
+            *generation
+        });
+        let request_refresh_generation = refresh_generation();
+        item_change_epoch.with_mut(|epoch| *epoch = epoch.wrapping_add(1));
+
+        let generations = item_generations;
+        let refresh_generation = refresh_generation;
+        let mut page = page;
+        let mut pagination = pagination;
+        let mut refresh_error = refresh_error;
+
+        spawn(async move {
+            debounce_item_sync().await;
+            let is_current_item = generations
+                .read()
+                .get(&id)
+                .is_some_and(|generation| *generation == request_generation);
+            if !is_current_item || refresh_generation() != request_refresh_generation {
+                return;
+            }
+
+            let result = api::get_download(id).await;
+            let is_current_item = generations
+                .read()
+                .get(&id)
+                .is_some_and(|generation| *generation == request_generation);
+            if !is_current_item || refresh_generation() != request_refresh_generation {
+                return;
+            }
+
+            match result {
+                Ok(download) => {
+                    apply_download_update(&mut page.write(), &mut pagination, id, download);
+                    refresh_error.set(None);
+                }
+                Err(error) => refresh_error.set(Some(view::server_error_message(error))),
+            }
+        });
+    });
+
+    // progress事件直接更新内存进度，changed事件只同步对应任务；重连才刷新第一页。
+    let download_events = use_download_events(refresh, sync_download);
+    let sync_if_disconnected = Callback::new(move |id| {
+        // 正常连接时服务端必定发送Changed；断线时由操作完成回调兜底同步。
+        if !download_events.connected() {
+            sync_download.call(id);
+        }
+    });
+    let current_page = page.read();
     let initial_cursor = current_page.next_before_id;
-    let mut downloads = current_page.downloads;
-    downloads.extend(pagination.items());
+    let extra_downloads = pagination.items();
+    let downloads_empty = current_page.downloads.is_empty() && extra_downloads.is_empty();
     let pagination_error = pagination.error();
     let has_more = pagination.has_more(initial_cursor);
 
@@ -138,14 +202,14 @@ pub fn DownloadsPage() -> Element {
           if let Some(message) = refresh_error() {
             div { class: "shrink-0 pb-4",
               ErrorCard {
-                title: "刷新下载任务失败",
+                title: "更新下载任务失败",
                 description: message,
                 retry: move |_| refresh.call(()),
               }
             }
           }
 
-          if downloads.is_empty() {
+          if downloads_empty {
             Empty {
               title: "暂无下载任务",
               description: "从搜索页面添加歌曲后，任务会显示在这里。",
@@ -154,12 +218,12 @@ pub fn DownloadsPage() -> Element {
             // 只有任务列表滚动
             div { class: "min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1",
               div { class: "divide-y divide-border",
-                for download in downloads {
+                for download in current_page.downloads.iter().cloned().chain(extra_downloads) {
                   DownloadItem {
                     key: "{download.id}",
                     progress: download_events.progress(download.id),
                     download,
-                    refresh,
+                    on_changed: sync_if_disconnected,
                   }
                 }
               }
@@ -203,6 +267,41 @@ pub fn DownloadsPage() -> Element {
           }
         }
       }
+    }
+}
+
+async fn debounce_item_sync() {
+    #[cfg(feature = "web")]
+    gloo_timers::future::TimeoutFuture::new(75).await;
+}
+
+fn apply_download_update(
+    page: &mut DownloadPage,
+    pagination: &mut CursorPagination<Download>,
+    id: i64,
+    download: Option<Download>,
+) {
+    let Some(download) = download else {
+        page.downloads.retain(|item| item.id != id);
+        pagination.remove_where(|item| item.id == id);
+        return;
+    };
+
+    if let Some(existing) = page.downloads.iter_mut().find(|item| item.id == id) {
+        *existing = download;
+        return;
+    }
+    if pagination.replace_where(|item| item.id == id, download.clone()) {
+        return;
+    }
+
+    // 自增ID大于当前首项表示这是新任务。未加载的旧任务状态变化无需插入当前列表。
+    if page
+        .downloads
+        .first()
+        .is_none_or(|first| download.id > first.id)
+    {
+        page.downloads.insert(0, download);
     }
 }
 

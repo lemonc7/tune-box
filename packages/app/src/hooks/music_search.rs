@@ -1,4 +1,9 @@
-use contracts::{music::MusicResult, request::SearchRequest};
+use std::{collections::HashSet, sync::Arc};
+
+use contracts::{
+    music::{MusicResult, Track},
+    request::SearchRequest,
+};
 use dioxus::prelude::*;
 
 use crate::{api, view};
@@ -8,7 +13,7 @@ pub enum MusicSearchState {
     // 页面刚打开，还没开始搜索
     Idle,
     Loading,
-    Ready(MusicResult),
+    Ready(Arc<MusicResult>),
     Failed(String),
 }
 
@@ -18,6 +23,7 @@ pub struct MusicSearch {
     // 加载更多时，页面状态
     loading_more: Signal<bool>,
     load_more_error: Signal<Option<String>>,
+    exhausted: Signal<bool>,
     generation: Signal<u64>,
 }
 
@@ -28,10 +34,6 @@ pub struct MusicSearchSession {
     pub list_scroll_top: Signal<f64>,
     pub search: MusicSearch,
 }
-
-// 由持久的路由宿主创建，搜索页只消费它，避免每次进入搜索页重新触发 Suspense。
-#[derive(Clone, Copy)]
-pub struct MusicProviders(pub Resource<ServerFnResult<Vec<String>>>);
 
 impl Clone for MusicSearch {
     fn clone(&self) -> Self {
@@ -52,7 +54,9 @@ impl MusicSearch {
 
     pub fn has_more(&self) -> bool {
         match &*self.state.read() {
-            MusicSearchState::Ready(result) => result.tracks.len() < result.total,
+            MusicSearchState::Ready(result) => {
+                !(self.exhausted)() && result.tracks.len() < result.total
+            }
             _ => false,
         }
     }
@@ -69,6 +73,7 @@ impl MusicSearch {
         self.invalidate_requests();
         self.loading_more.set(false);
         self.load_more_error.set(None);
+        self.exhausted.set(true);
         self.state.set(MusicSearchState::Failed(message.into()));
     }
 
@@ -79,6 +84,7 @@ impl MusicSearch {
         // 取消 加载更多 状态
         self.loading_more.set(false);
         self.load_more_error.set(None);
+        self.exhausted.set(false);
         // 设置页面为loading状态
         self.state.set(MusicSearchState::Loading);
         // 发起异步请求
@@ -86,7 +92,11 @@ impl MusicSearch {
         let generation = self.generation;
         spawn(async move {
             let next = match api::search_music(request).await {
-                Ok(result) => MusicSearchState::Ready(result),
+                Ok(mut result) => {
+                    retain_new_tracks(&[], &mut result.tracks);
+                    result.total = result.total.max(result.tracks.len());
+                    MusicSearchState::Ready(Arc::new(result))
+                }
                 Err(error) => MusicSearchState::Failed(view::server_error_message(error)),
             };
             // 版本号对应上，才更新数据
@@ -104,9 +114,10 @@ impl MusicSearch {
         }
 
         // 从当前搜索结果中构造下一页请求
-        let MusicSearchState::Ready(mut current) = self.state() else {
+        let MusicSearchState::Ready(current) = self.state() else {
             return;
         };
+        let mut current = (*current).clone();
         let request = SearchRequest {
             provider: current.provider.clone(),
             query: current.query.clone(),
@@ -122,6 +133,7 @@ impl MusicSearch {
         let mut state = self.state;
         let mut loading_more = self.loading_more;
         let mut load_more_error = self.load_more_error;
+        let mut exhausted = self.exhausted;
         let generation = self.generation;
         spawn(async move {
             let result = api::search_music(request).await;
@@ -130,11 +142,16 @@ impl MusicSearch {
             }
 
             match result {
-                Ok(next) => {
-                    current.page = next.page;
-                    current.total = next.total;
+                Ok(mut next) => {
+                    let added = retain_new_tracks(&current.tracks, &mut next.tracks);
+                    // 第三方源的total可能不准确；空页、重复页或不前进的页码都应停止分页。
+                    if next.page <= current.page || added == 0 {
+                        exhausted.set(true);
+                    }
+                    current.page = current.page.max(next.page);
                     current.tracks.extend(next.tracks);
-                    state.set(MusicSearchState::Ready(current));
+                    current.total = next.total.max(current.tracks.len());
+                    state.set(MusicSearchState::Ready(Arc::new(current)));
                 }
                 Err(error) => {
                     load_more_error.set(Some(view::server_error_message(error)));
@@ -161,8 +178,18 @@ pub fn use_music_search() -> MusicSearch {
         state: use_signal(|| MusicSearchState::Idle),
         loading_more: use_signal(|| false),
         load_more_error: use_signal(|| None),
+        exhausted: use_signal(|| false),
         generation: use_signal(|| 0),
     }
+}
+
+fn retain_new_tracks(existing: &[Track], incoming: &mut Vec<Track>) -> usize {
+    let mut seen = existing
+        .iter()
+        .map(|track| (track.provider.clone(), track.id.clone()))
+        .collect::<HashSet<_>>();
+    incoming.retain(|track| seen.insert((track.provider.clone(), track.id.clone())));
+    incoming.len()
 }
 
 pub fn use_music_search_provider() -> MusicSearchSession {
@@ -178,4 +205,39 @@ pub fn use_music_search_provider() -> MusicSearchSession {
 
 pub fn use_music_search_session() -> MusicSearchSession {
     use_context::<MusicSearchSession>()
+}
+
+#[cfg(test)]
+mod tests {
+    use contracts::music::Track;
+
+    use super::retain_new_tracks;
+
+    fn track(id: &str) -> Track {
+        Track {
+            id: id.to_owned(),
+            provider: "provider".to_owned(),
+            name: id.to_owned(),
+            artists: Vec::new(),
+            album: String::new(),
+            album_artist: String::new(),
+            date: String::new(),
+            cover_url: String::new(),
+        }
+    }
+
+    #[test]
+    fn removes_tracks_already_loaded_and_duplicates_in_the_same_page() {
+        let existing = vec![track("1")];
+        let mut incoming = vec![track("1"), track("2"), track("2"), track("3")];
+
+        assert_eq!(retain_new_tracks(&existing, &mut incoming), 2);
+        assert_eq!(
+            incoming
+                .into_iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            ["2", "3"]
+        );
+    }
 }

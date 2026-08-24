@@ -1,7 +1,7 @@
 #[cfg(feature = "server")]
 use crate::error::ServerError;
 use contracts::{
-    download::{DownloadAction, DownloadEvent, DownloadPage},
+    download::{Download, DownloadAction, DownloadEvent, DownloadPage},
     library::LibrarySnapshot,
     music::MusicResult,
     request::{CreateDownloadRequest, SearchRequest},
@@ -50,6 +50,15 @@ pub async fn list_downloads(before_id: Option<i64>, limit: i64) -> ServerFnResul
     state
         .service
         .list_downloads(before_id, limit)
+        .await
+        .map_err(ServerError::into)
+}
+
+#[server(state: Extension<crate::server::AppState>)]
+pub async fn get_download(id: i64) -> ServerFnResult<Option<Download>> {
+    state
+        .service
+        .get_download(id)
         .await
         .map_err(ServerError::into)
 }

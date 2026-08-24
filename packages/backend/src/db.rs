@@ -210,6 +210,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gets_a_download_by_id() {
+        let repository = Repository::new(connect_memory().await.unwrap());
+        let id = repository
+            .add_download("provider", "track", &metadata())
+            .await
+            .unwrap()
+            .unwrap();
+
+        let download = repository.get_download(id).await.unwrap().unwrap();
+        assert_eq!(download.id, id);
+        assert_eq!(download.track_id, "track");
+        assert!(repository.get_download(id + 1).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
     async fn downloaded_and_retried_files_are_claimed_for_tagging() {
         let repository = Repository::new(connect_memory().await.unwrap());
         repository

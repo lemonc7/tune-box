@@ -8,7 +8,7 @@ use crate::{api, view};
 pub fn DownloadItem(
     download: Download,
     progress: Option<(i64, Option<i64>)>,
-    refresh: Callback<()>,
+    on_changed: Callback<i64>,
 ) -> Element {
     let mut confirmation = use_signal(|| None::<DownloadAction>);
     let download_id = download.id;
@@ -17,8 +17,8 @@ pub fn DownloadItem(
             .await
             .map_err(|error| CapturedError::msg(view::server_error_message(error)))?;
 
-        // SSE断开时也能更新页面
-        refresh.call(());
+        // SSE断开时也能按任务ID更新页面。
+        on_changed.call(download_id);
         Ok::<_, CapturedError>(())
     });
 

@@ -81,10 +81,6 @@ impl<T: 'static> CursorPagination<T> {
         self.state.read().error.clone()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.state.read().extra_items.is_empty()
-    }
-
     pub fn reset(&mut self) {
         let mut state = self.state.write();
         let request_id = state.request_id.wrapping_add(1);
@@ -150,6 +146,26 @@ impl<T: 'static> CursorPagination<T> {
 
         state.loading = false;
         state.error = Some(message);
+    }
+
+    pub fn replace_where(&mut self, mut predicate: impl FnMut(&T) -> bool, item: T) -> bool {
+        let mut state = self.state.write();
+        let Some(existing) = state
+            .extra_items
+            .iter_mut()
+            .find(|existing| predicate(existing))
+        else {
+            return false;
+        };
+        *existing = item;
+        true
+    }
+
+    pub fn remove_where(&mut self, mut predicate: impl FnMut(&T) -> bool) -> bool {
+        let mut state = self.state.write();
+        let original_len = state.extra_items.len();
+        state.extra_items.retain(|item| !predicate(item));
+        state.extra_items.len() != original_len
     }
 }
 

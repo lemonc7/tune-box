@@ -1,7 +1,11 @@
 use dioxus::{fullstack::FullstackContext, prelude::*};
 use dioxus_icons::lucide::{Download, Library, Music2, Search};
 
-use crate::{Route, components::ErrorPage, hooks::use_player};
+use crate::{
+    Route,
+    components::{ErrorPage, Loading},
+    hooks::use_player,
+};
 
 #[component]
 pub fn AppLayout() -> Element {
@@ -127,8 +131,14 @@ pub fn ErrorLayout() -> Element {
                   },
               }
           },
-          // 渲染Search/Download/Library页面
-          Outlet::<Route> {}
+          // 页面数据加载只替换内容区域，导航和根级播放器保持挂载。
+          SuspenseBoundary {
+            fallback: |_| rsx! {
+              Loading { message: "正在加载页面…" }
+            },
+            // 渲染Search/Download/Library页面
+            Outlet::<Route> {}
+          }
         }
       }
     }

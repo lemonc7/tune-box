@@ -19,6 +19,13 @@ const BASE_RETRY_DELAY_SECS: u64 = 2;
 const MAX_RETRY_DELAY_SECS: u64 = 5 * 60;
 
 impl Service {
+    pub async fn get_download(
+        &self,
+        id: i64,
+    ) -> Result<Option<contracts::download::Download>, ServiceError> {
+        Ok(self.repository.get_download(id).await?.map(Into::into))
+    }
+
     pub async fn create_download(
         &self,
         request: CreateDownloadRequest,
