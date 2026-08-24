@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE downloads\n            SET status = CASE\n                    WHEN status IN ('resolving', 'downloading') THEN 'pending'\n                    WHEN status = 'tagging' THEN 'downloaded'\n                END,\n                version = version + 1,\n                next_retry_at = NULL,\n                error_message = '上一次执行意外中断，任务已恢复',\n                finished_at = NULL,\n                updated_at = CURRENT_TIMESTAMP\n            WHERE status IN ('resolving', 'downloading', 'tagging')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "d22540d2ea665070e248b9181b5477f719435953ce0f542c4d19adf54f9bcf23"
+}

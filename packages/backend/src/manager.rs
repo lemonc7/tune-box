@@ -63,7 +63,7 @@ impl Manager {
             service,
             command_rx,
             max_concurrent: max_concurrent.max(1),
-            poll_interval: Duration::from_secs(1),
+            poll_interval: Duration::from_secs(5),
         };
         let handle = ManagerHandle { command_tx };
 

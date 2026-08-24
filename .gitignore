@@ -1,6 +1,6 @@
 /target
+dist/
 .env
 tune.db
 .vscode/
 config.toml
-

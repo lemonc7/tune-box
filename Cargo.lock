@@ -4356,6 +4356,7 @@ dependencies = [
  "pin-project-lite",
  "sync_wrapper",
  "tokio",
+ "tokio-util",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -4385,7 +4386,9 @@ dependencies = [
  "tower",
  "tower-layer",
  "tower-service",
+ "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -4481,8 +4484,12 @@ dependencies = [
  "dioxus",
  "dioxus-icons",
  "gloo-timers",
+ "rmcp",
+ "subtle",
  "tokio",
  "tokio-util",
+ "tower",
+ "tower-http",
  "tune-box-backend",
  "tune-box-contracts",
  "url",

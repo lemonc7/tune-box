@@ -68,5 +68,6 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<Config, String> {
     config
         .validate()
         .map_err(|error| format!("配置文件无效: {error}"))?;
+
     Ok(config)
 }

@@ -101,6 +101,7 @@ impl MusicMcp {
                 .wake()
                 .await
                 .map_err(|error| error.to_string())?;
+            tracing::info!(task_id = id, "MCP 已创建下载任务");
             Ok(format!("已创建下载任务 {id}"))
         } else {
             Ok("下载任务已存在".to_owned())
@@ -212,6 +213,7 @@ impl MusicMcp {
             .sync_library()
             .await
             .map_err(|error| error.to_string())?;
+        tracing::info!(song_count = count, "MCP 曲库扫描完成");
         Ok(format!("同步完成，共 {count} 首歌曲"))
     }
 
@@ -225,6 +227,9 @@ impl MusicMcp {
             .delete_download(args.id)
             .await
             .map_err(|error| error.to_string())?;
+        if deleted {
+            tracing::info!(task_id = args.id, "MCP 已删除下载历史");
+        }
         Ok(if deleted {
             "已删除下载历史"
         } else {
@@ -240,6 +245,9 @@ impl MusicMcp {
             .delete_song(args.id)
             .await
             .map_err(|error| error.to_string())?;
+        if deleted {
+            tracing::info!(song_id = args.id, "MCP 已删除曲库歌曲");
+        }
         Ok(if deleted {
             "已删除歌曲"
         } else {

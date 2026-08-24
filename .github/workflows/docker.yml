@@ -1,0 +1,62 @@
+name: Docker image
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }} image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Prepare image metadata
+        id: metadata
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "archive=tune-box-${version}-${ARCH}.tar" >> "${GITHUB_OUTPUT}"
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          tags: |
+            lemonc7/tune-box:${{ steps.metadata.outputs.version }}
+            lemonc7/tune-box:latest
+          outputs: type=docker,dest=${{ runner.temp }}/${{ steps.metadata.outputs.archive }}
+          cache-from: type=gha,scope=tune-box-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=tune-box-${{ matrix.arch }}
+          provenance: false
+
+      - name: Upload image
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ runner.temp }}/${{ steps.metadata.outputs.archive }}
+          archive: false

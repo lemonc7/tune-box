@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            DELETE FROM downloads\n            WHERE id IN (\n                SELECT download_id FROM songs\n                WHERE scan_token != ?\n                  AND download_id IS NOT NULL\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "98e2b951df183037d6f2dfe54c95fdb50ac1e81caf358d88b07530f34cff4781"
+}
