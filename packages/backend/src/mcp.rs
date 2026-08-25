@@ -108,6 +108,28 @@ impl MusicMcp {
         }
     }
 
+    #[tool(description = "查看下载任务状态。")]
+    async fn get_download(&self, Parameters(args): Parameters<TaskArgs>) -> Result<String, String> {
+        let download = self
+            .service
+            .get_download(args.id)
+            .await
+            .map_err(|error| error.to_string())?;
+
+        let Some(download) = download else {
+            return Ok("对应下载任务不存在".to_string());
+        };
+        serde_json::to_string(&serde_json::json!({
+          "id": download.id,
+          "provider": download.provider,
+          "metadata": download.metadata,
+          "status": download.status,
+          "downloaded_bytes": download.downloaded_bytes,
+          "total_bytes": download.total_bytes
+        }))
+        .map_err(|error| error.to_string())
+    }
+
     #[tool(description = "分页查看下载任务。")]
     async fn list_downloads(
         &self,
