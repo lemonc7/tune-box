@@ -12,6 +12,7 @@ url.workspace = true
 gloo-timers = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 dioxus-icons.workspace = true
 rmcp = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }
@@ -28,6 +29,7 @@ server = [
   "dep:subtle",
   "dep:tokio",
   "dep:tokio-util",
+  "dep:tracing-subscriber",
   "dep:tower",
   "dep:tower-http",
 ]

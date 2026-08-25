@@ -90,11 +90,14 @@ pub fn SearchPage() -> Element {
                 class: "h-10 w-full min-w-32 appearance-none rounded-md border border-input",
                 class: "bg-background py-0 pl-3 pr-9 text-sm text-foreground outline-none",
                 class: "focus-visible:ring-2 focus-visible:ring-ring/50",
-                value: selected_provider.unwrap_or_default(),
                 disabled: providers_empty || search.loading(),
                 onchange: move |event| provider.set(Some(event.value())),
-                for provider in providers {
-                  option { value: provider.clone(), "{provider}" }
+                for provider_name in providers {
+                  option {
+                    value: provider_name.clone(),
+                    selected: selected_provider.as_ref() == Some(&provider_name),
+                    "{provider_name}"
+                  }
                 }
               }
               span {
