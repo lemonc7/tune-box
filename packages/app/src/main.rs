@@ -31,7 +31,7 @@ async fn main() -> dioxus::Result<()> {
 #[cfg(feature = "server")]
 fn init_tracing() {
     use dioxus::logger::tracing::{Level, subscriber::set_global_default};
-    use tracing_subscriber::{EnvFilter, fmt};
+    use tracing_subscriber::{EnvFilter, fmt, fmt::time::ChronoLocal};
 
     let level = if cfg!(debug_assertions) {
         Level::DEBUG
@@ -45,13 +45,18 @@ fn init_tracing() {
     let subscriber = fmt()
         .with_env_filter(filter)
         .with_target(false)
-        .without_time()
-        // dx serve 会捕获子进程输出，自动终端检测会误判为不支持颜色。
-        // 发布构建通常交给 Docker 收集日志，因此不写入 ANSI 转义码。
-        .with_ansi(cfg!(debug_assertions))
-        .finish();
+        .with_timer(ChronoLocal::new("%Y-%m-%d %H:%M:%S".to_owned()))
+        // Docker和dx serve都会捕获标准输出，自动终端检测会误判为不支持颜色。
+        // 日志平台不支持ANSI时可通过NO_COLOR=1关闭。
+        .with_ansi(std::env::var_os("NO_COLOR").is_none());
 
-    set_global_default(subscriber).expect("日志系统只能初始化一次");
+    let result = if std::env::var_os("DIOXUS_CLI_ENABLED").is_some() {
+        // dx serve自身已经输出时间，避免重复时间戳。
+        set_global_default(subscriber.without_time().finish())
+    } else {
+        set_global_default(subscriber.finish())
+    };
+    result.expect("日志系统只能初始化一次");
 }
 
 #[derive(Routable, Clone)]

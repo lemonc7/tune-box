@@ -4460,6 +4460,7 @@ version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
+ "chrono",
  "matchers",
  "nu-ansi-term",
  "once_cell",
@@ -4489,7 +4490,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tune-box"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "dioxus",
  "dioxus-icons",
@@ -4508,7 +4509,7 @@ dependencies = [
 
 [[package]]
 name = "tune-box-backend"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -4532,7 +4533,7 @@ dependencies = [
 
 [[package]]
 name = "tune-box-contracts"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "garde",
  "serde",
