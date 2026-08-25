@@ -120,8 +120,10 @@ impl Repository {
                         ) AS ordered
                     ),
                     '[]'
-                ) AS artists
+                ) AS artists,
+                d.metadata AS metadata
             FROM songs AS s
+            LEFT JOIN downloads AS d ON d.id = s.download_id
             WHERE s.id <
             "#,
         );
@@ -186,6 +188,9 @@ impl Repository {
                     id: row.try_get("id")?,
                     name: row.try_get("name")?,
                     artists: row.try_get::<Json<Vec<String>>, _>("artists")?.0,
+                    metadata: row
+                        .try_get::<Option<Json<Metadata>>, _>("metadata")?
+                        .map(|metadata| metadata.0),
                     extension,
                     size: row.try_get("size")?,
                 })
@@ -324,5 +329,53 @@ impl Repository {
             self.notify_download_changed(download_id);
         }
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use contracts::music::Metadata;
+
+    use crate::db::{Repository, connect_memory};
+
+    #[tokio::test]
+    async fn list_songs_only_includes_metadata_for_linked_downloads() {
+        let repository = Repository::new(connect_memory().await.unwrap());
+        let metadata = Metadata {
+            name: "下载歌曲".to_owned(),
+            artists: vec!["歌手".to_owned()],
+            album: "专辑".to_owned(),
+            album_artist: "专辑艺人".to_owned(),
+            date: "2026".to_owned(),
+            cover_url: "https://example.com/cover.jpg".to_owned(),
+        };
+        let download_id = repository
+            .add_download("provider", "track", &metadata)
+            .await
+            .unwrap()
+            .unwrap();
+
+        sqlx::query("INSERT INTO songs (path, name, size, download_id) VALUES (?, ?, ?, ?)")
+            .bind("/music/download.flac")
+            .bind("下载歌曲")
+            .bind(1024_i64)
+            .bind(download_id)
+            .execute(&repository.pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO songs (path, name, size) VALUES (?, ?, ?)")
+            .bind("/music/local.flac")
+            .bind("本地歌曲")
+            .bind(2048_i64)
+            .execute(&repository.pool)
+            .await
+            .unwrap();
+
+        let songs = repository.list_songs(&[], i64::MAX, 10).await.unwrap();
+        let downloaded = songs.iter().find(|song| song.name == "下载歌曲").unwrap();
+        let local = songs.iter().find(|song| song.name == "本地歌曲").unwrap();
+
+        assert_eq!(downloaded.metadata.as_ref(), Some(&metadata));
+        assert_eq!(local.metadata, None);
     }
 }

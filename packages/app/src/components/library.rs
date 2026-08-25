@@ -15,23 +15,56 @@ pub fn SongItem(song: Song, on_deleted: EventHandler<i64>) -> Element {
         on_deleted.call(song_id);
         Ok::<_, CapturedError>(())
     });
-    let artists = view::artists(&song.artists);
-    let confirm_song_name = song.name.clone();
+    let artists = song
+        .metadata
+        .as_ref()
+        .map(|metadata| metadata.artists.as_slice())
+        .filter(|artists| !artists.is_empty())
+        .unwrap_or(&song.artists);
+    let artists = view::artists(artists);
+    let cover_url = song
+        .metadata
+        .as_ref()
+        .map(|metadata| metadata.cover_url.clone())
+        .unwrap_or_default();
     let extension = if song.extension.is_empty() {
         "音频".to_owned()
     } else {
         song.extension.to_ascii_uppercase()
     };
+    let details = song
+        .metadata
+        .as_ref()
+        .into_iter()
+        .flat_map(|metadata| {
+            [metadata.album.clone(), metadata.date.clone()]
+                .into_iter()
+                .filter(|value| !value.is_empty())
+        })
+        .chain(std::iter::once(extension.clone()))
+        .chain(std::iter::once(view::format_bytes(song.size)))
+        .collect::<Vec<_>>()
+        .join(" • ");
+    let confirm_song_name = song.name.clone();
     let pending = delete_song.pending();
 
     rsx! {
       article { class: "py-5",
         div { class: "flex items-center gap-4",
-          div {
-            class: "flex size-14 shrink-0 items-center justify-center",
-            class: "rounded-lg bg-muted text-muted-foreground",
-            aria_hidden: true,
-            FileMusic { size: 20 }
+          if cover_url.is_empty() {
+            div {
+              class: "flex size-14 shrink-0 items-center justify-center",
+              class: "rounded-lg bg-muted text-muted-foreground",
+              aria_hidden: true,
+              FileMusic { size: 20 }
+            }
+          } else {
+            img {
+              class: "size-14 shrink-0 rounded-lg bg-muted object-cover",
+              src: cover_url,
+              alt: "",
+              loading: "lazy",
+            }
           }
 
           div { class: "min-w-0 flex-1",
@@ -42,7 +75,7 @@ pub fn SongItem(song: Song, on_deleted: EventHandler<i64>) -> Element {
               "{artists}"
             }
             p { class: "mt-1 text-xs text-muted-foreground",
-              "{extension} • {view::format_bytes(song.size)}"
+              "{details}"
             }
           }
 
