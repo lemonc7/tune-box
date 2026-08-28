@@ -109,7 +109,7 @@ impl Embedder {
         Self::set_tag_field(&mut tag, "ALBUM", metadata.album);
         Self::set_tag_field(&mut tag, "LYRICS", lyrics);
         Self::set_tag_field(&mut tag, "ALBUMARTIST", metadata.album_artist);
-        Self::set_tag_field(&mut tag, "DATE", metadata.date);
+        Self::set_date_fields(&mut tag, &metadata.date);
 
         // metadata是完整快照：先清理旧的正面封面；其他类型图片保持不变。
         pictures.retain(|(picture, _)| picture.pic_type() != PictureType::CoverFront);
@@ -149,6 +149,15 @@ impl Embedder {
 
             tag.push("ARTIST".to_string(), artist.to_string());
         }
+    }
+
+    fn set_date_fields(tag: &mut VorbisComments, date: &str) {
+        Self::set_tag_field(tag, "DATE", date.to_string());
+        Self::set_tag_field(
+            tag,
+            "YEAR",
+            release_year(date).unwrap_or_default().to_string(),
+        );
     }
 
     async fn fetch_cover(&self, cover_url: &str) -> Result<Option<Vec<u8>>, TagError> {
@@ -337,6 +346,24 @@ fn artists_from_tag(tag: &VorbisComments) -> Vec<String> {
         .collect()
 }
 
+fn release_year(date: &str) -> Option<&str> {
+    let date = date.trim();
+    let year = date.get(..4)?;
+    if !year.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    if date.len() == 4
+        || date
+            .as_bytes()
+            .get(4)
+            .is_some_and(|separator| matches!(separator, b'-' | b'/' | b'.'))
+    {
+        Some(year)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,6 +395,27 @@ mod tests {
             tag.get_all("ARTIST").collect::<Vec<_>>(),
             ["artist one", "artist two"]
         );
+    }
+
+    #[test]
+    fn writes_full_date_and_compatible_year() {
+        let mut tag = VorbisComments::new();
+
+        Embedder::set_date_fields(&mut tag, "2026-08-28");
+
+        assert_eq!(tag.get("DATE"), Some("2026-08-28"));
+        assert_eq!(tag.get("YEAR"), Some("2026"));
+    }
+
+    #[test]
+    fn removes_stale_year_when_date_has_no_valid_year() {
+        let mut tag = VorbisComments::new();
+        tag.insert("YEAR".to_string(), "1999".to_string());
+
+        Embedder::set_date_fields(&mut tag, "unknown");
+
+        assert_eq!(tag.get("DATE"), Some("unknown"));
+        assert_eq!(tag.get("YEAR"), None);
     }
 
     #[test]

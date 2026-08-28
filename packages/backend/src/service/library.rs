@@ -1,6 +1,5 @@
 use std::{
     io::ErrorKind,
-    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
 
@@ -62,93 +61,96 @@ impl Service {
         fs::create_dir_all(directory)
             .await
             .map_err(ServiceError::LibraryIo)?;
-        // 异步打开目录
-        let mut entries = fs::read_dir(directory)
-            .await
-            .map_err(ServiceError::LibraryIo)?;
         let mut songs = Vec::new();
+        let mut directories = vec![directory.to_path_buf()];
 
-        // 逐个读取目录文件
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(ServiceError::LibraryIo)?
-        {
-            // 忽略目录
-            if !entry
-                .file_type()
+        // 递归扫描歌手目录，同时兼容下载根目录下已有的平铺文件。
+        while let Some(current_directory) = directories.pop() {
+            let mut entries = fs::read_dir(&current_directory)
+                .await
+                .map_err(ServiceError::LibraryIo)?;
+
+            while let Some(entry) = entries
+                .next_entry()
                 .await
                 .map_err(ServiceError::LibraryIo)?
-                .is_file()
             {
-                continue;
-            }
-            let file_name = entry.file_name();
-            let Some(file_name) = file_name.to_str() else {
-                continue;
-            };
-            // 跳过隐藏文件
-            if file_name.starts_with('.') {
-                continue;
-            }
+                let file_name = entry.file_name();
+                let Some(file_name) = file_name.to_str() else {
+                    continue;
+                };
+                // 跳过隐藏文件和隐藏目录。
+                if file_name.starts_with('.') {
+                    continue;
+                }
 
-            // 过滤支持的音频格式
-            let path = entry.path();
-            let Some(extension) = path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .map(str::to_ascii_lowercase)
-            else {
-                continue;
-            };
-            if !matches!(
-                extension.as_str(),
-                "flac" | "mp3" | "wav" | "m4a" | "aac" | "ape" | "ogg" | "opus"
-            ) {
-                continue;
-            }
+                let file_type = entry.file_type().await.map_err(ServiceError::LibraryIo)?;
+                if file_type.is_dir() {
+                    directories.push(entry.path());
+                    continue;
+                }
+                if !file_type.is_file() {
+                    continue;
+                }
 
-            // 默认使用文件名作为歌名
-            let mut name = path
-                .file_stem()
-                .and_then(|value| value.to_str())
-                .unwrap_or("未知歌曲")
-                .to_owned();
-            let mut artists = Vec::new();
-            // 读取flac标签
-            if extension == "flac" {
-                match Embedder::read_flac_metadata(&path).await {
-                    Ok(info) => {
-                        if !info.title.trim().is_empty() {
-                            // 使用flac中的歌曲名
-                            name = info.title;
+                // 过滤支持的音频格式
+                let path = entry.path();
+                let Some(extension) = path
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .map(str::to_ascii_lowercase)
+                else {
+                    continue;
+                };
+                if !matches!(
+                    extension.as_str(),
+                    "flac" | "mp3" | "wav" | "m4a" | "aac" | "ape" | "ogg" | "opus"
+                ) {
+                    continue;
+                }
+
+                // 默认使用文件名作为歌名
+                let mut name = path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("未知歌曲")
+                    .to_owned();
+                let mut artists = Vec::new();
+                // 读取flac标签
+                if extension == "flac" {
+                    match Embedder::read_flac_metadata(&path).await {
+                        Ok(info) => {
+                            if !info.title.trim().is_empty() {
+                                // 使用flac中的歌曲名
+                                name = info.title;
+                            }
+                            artists = info.artists;
                         }
-                        artists = info.artists;
-                    }
-                    Err(error) => {
-                        tracing::warn!(path = ?path, %error, "读取 FLAC 元数据失败，使用文件名");
+                        Err(error) => {
+                            tracing::warn!(path = ?path, %error, "读取 FLAC 元数据失败，使用文件名");
+                        }
                     }
                 }
-            }
 
-            let size = i64::try_from(
-                entry
-                    .metadata()
-                    .await
-                    .map_err(ServiceError::LibraryIo)?
-                    .len(),
-            )
-            .map_err(|_| ServiceError::SizeOverflow)?;
-            let path = path
-                .to_str()
-                .ok_or(ServiceError::UnsafeLibraryPath)?
-                .to_owned();
-            songs.push(ScannedSong {
-                path,
-                name,
-                size,
-                artists,
-            });
+                let size = i64::try_from(
+                    entry
+                        .metadata()
+                        .await
+                        .map_err(ServiceError::LibraryIo)?
+                        .len(),
+                )
+                .map_err(|_| ServiceError::SizeOverflow)?;
+                let path = path
+                    .to_str()
+                    .ok_or(ServiceError::UnsafeLibraryPath)?
+                    .to_owned();
+                songs.push(ScannedSong {
+                    path,
+                    name,
+                    size,
+                    artists,
+                });
+            }
         }
 
         // 生成本轮扫描标记
@@ -296,10 +298,18 @@ async fn publish_ready_file(
         .extension()
         .and_then(|value| value.to_str())
         .ok_or(ServiceError::Download(DownloadError::InvalidFileName))?;
-    let title = sanitize_filename_component(&task.metadata.name, "未知歌曲");
-    let artists = sanitize_filename_component(&task.metadata.artists.join(", "), "未知歌手");
-    let stem = format!("{artists} - {title}");
-    let target = parent.join(format!("{stem}.{extension}"));
+    let target = published_target_path(
+        parent,
+        extension,
+        &task.metadata.name,
+        &task.metadata.artists,
+    );
+    let target_directory = target
+        .parent()
+        .ok_or(ServiceError::Download(DownloadError::InvalidFileName))?;
+    fs::create_dir_all(&target_directory)
+        .await
+        .map_err(DownloadError::Io)?;
 
     // 使用硬链接创建正式曲库文件
     match fs::hard_link(ready_path, &target).await {
@@ -353,6 +363,8 @@ fn sanitize_filename_component(value: &str, fallback: &str) -> String {
 async fn files_are_same(left: &Path, right: &Path) -> Result<bool, ServiceError> {
     cfg_select! {
       unix => {
+        os::unix::fs::MetadataExt;
+
         let left = fs::metadata(left).await.map_err(DownloadError::Io)?;
         let right = fs::metadata(right).await.map_err(DownloadError::Io)?;
         Ok(left.dev() == right.dev() && left.ino() == right.ino())
@@ -361,5 +373,55 @@ async fn files_are_same(left: &Path, right: &Path) -> Result<bool, ServiceError>
         let _ = (left,right);
         Ok(false)
       }
+    }
+}
+
+fn primary_artist_directory(artists: &[String]) -> String {
+    let primary_artist = artists.first().map(String::as_str).unwrap_or_default();
+    sanitize_filename_component(primary_artist, "未知歌手")
+}
+
+fn published_target_path(
+    parent: &Path,
+    extension: &str,
+    title: &str,
+    artists: &[String],
+) -> PathBuf {
+    let artist_directory = primary_artist_directory(artists);
+    let title = sanitize_filename_component(title, "未知歌曲");
+    parent
+        .join(artist_directory)
+        .join(format!("{title}.{extension}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{primary_artist_directory, published_target_path, sanitize_filename_component};
+
+    #[test]
+    fn only_uses_primary_artist_for_directory() {
+        let artists = vec!["主歌手".to_string(), "合作歌手".to_string()];
+        assert_eq!(primary_artist_directory(&artists), "主歌手");
+        assert_eq!(
+            published_target_path(Path::new("downloads"), "flac", "歌曲名", &artists),
+            Path::new("downloads").join("主歌手").join("歌曲名.flac")
+        );
+    }
+
+    #[test]
+    fn sanitizes_artist_directory_and_song_file_components() {
+        assert_eq!(sanitize_filename_component("歌手/A", "未知歌手"), "歌手_A");
+        assert_eq!(
+            sanitize_filename_component("歌曲:名称", "未知歌曲"),
+            "歌曲_名称"
+        );
+    }
+
+    #[test]
+    fn uses_fallback_for_empty_components() {
+        assert_eq!(sanitize_filename_component("...", "未知歌曲"), "未知歌曲");
+        assert_eq!(sanitize_filename_component("", "未知歌手"), "未知歌手");
     }
 }
