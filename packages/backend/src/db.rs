@@ -173,6 +173,8 @@ mod tests {
             album_artist: String::new(),
             date: String::new(),
             cover_url: String::new(),
+            track_number: String::new(),
+            disc_number: String::new(),
         }
     }
 

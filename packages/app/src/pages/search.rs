@@ -268,6 +268,8 @@ fn TrackItem(track: Track) -> Element {
             album_artist: track.album_artist,
             date: track.date,
             cover_url: track.cover_url,
+            track_number: track.track_number,
+            disc_number: track.disc_number,
         })
         .await
         .map_err(|error| CapturedError::msg(view::server_error_message(error)))

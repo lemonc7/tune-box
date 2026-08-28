@@ -48,6 +48,8 @@ struct CreateDownloadArgs {
     album_artist: Option<String>,
     date: Option<String>,
     cover_url: Option<String>,
+    track_number: Option<String>,
+    disc_number: Option<String>,
 }
 
 impl From<SearchMusicArgs> for SearchRequest {
@@ -93,6 +95,8 @@ impl MusicMcp {
                 album_artist: args.album_artist.unwrap_or_default(),
                 date: args.date.unwrap_or_default(),
                 cover_url: args.cover_url.unwrap_or_default(),
+                track_number: args.track_number.unwrap_or_default(),
+                disc_number: args.disc_number.unwrap_or_default(),
             })
             .await
             .map_err(|error| error.to_string())?;

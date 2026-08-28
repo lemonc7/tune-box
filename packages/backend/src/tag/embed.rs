@@ -110,6 +110,8 @@ impl Embedder {
         Self::set_tag_field(&mut tag, "LYRICS", lyrics);
         Self::set_tag_field(&mut tag, "ALBUMARTIST", metadata.album_artist);
         Self::set_date_fields(&mut tag, &metadata.date);
+        Self::set_tag_field(&mut tag, "TRACKNUMBER", metadata.track_number);
+        Self::set_tag_field(&mut tag, "DISCNUMBER", metadata.disc_number);
 
         // metadata是完整快照：先清理旧的正面封面；其他类型图片保持不变。
         pictures.retain(|(picture, _)| picture.pic_type() != PictureType::CoverFront);

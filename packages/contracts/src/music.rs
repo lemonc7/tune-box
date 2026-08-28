@@ -8,6 +8,10 @@ pub struct Metadata {
     pub album_artist: String,
     pub date: String,
     pub cover_url: String,
+    #[serde(default)]
+    pub track_number: String,
+    #[serde(default)]
+    pub disc_number: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -30,4 +34,8 @@ pub struct Track {
     pub album_artist: String,
     pub date: String,
     pub cover_url: String,
+    #[serde(default)]
+    pub track_number: String,
+    #[serde(default)]
+    pub disc_number: String,
 }

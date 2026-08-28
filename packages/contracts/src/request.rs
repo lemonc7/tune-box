@@ -53,6 +53,12 @@ pub struct CreateDownloadRequest {
     #[garde(skip)]
     #[serde(default)]
     pub cover_url: String,
+    #[garde(skip)]
+    #[serde(default)]
+    pub track_number: String,
+    #[garde(skip)]
+    #[serde(default)]
+    pub disc_number: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Validate, PartialEq, Eq)]

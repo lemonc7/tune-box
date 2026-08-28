@@ -348,6 +348,8 @@ mod tests {
             album_artist: "专辑艺人".to_owned(),
             date: "2026".to_owned(),
             cover_url: "https://example.com/cover.jpg".to_owned(),
+            track_number: "1".to_owned(),
+            disc_number: "1".to_owned(),
         };
         let download_id = repository
             .add_download("provider", "track", &metadata)

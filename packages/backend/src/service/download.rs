@@ -46,6 +46,8 @@ impl Service {
                     album_artist: request.album_artist,
                     date: request.date,
                     cover_url: request.cover_url,
+                    track_number: request.track_number,
+                    disc_number: request.disc_number,
                 },
             )
             .await?;

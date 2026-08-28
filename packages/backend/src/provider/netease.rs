@@ -97,6 +97,29 @@ struct AlbumDetail {
 }
 
 #[derive(Debug, Deserialize)]
+struct SongDetailResponse {
+    #[serde(default)]
+    code: i32,
+    #[serde(default)]
+    songs: Vec<SongDetail>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SongDetail {
+    id: i64,
+    #[serde(default)]
+    no: u32,
+    #[serde(default, deserialize_with = "flexible_optional_string")]
+    cd: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct SongTagMetadata {
+    track_number: String,
+    disc_number: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct DirectResolveResponse {
     #[serde(default)]
     code: i32,
@@ -187,6 +210,44 @@ impl NeteaseProvider {
         ensure_api_success(payload.code, "专辑详情")?;
         let publish_time = payload.album.and_then(|album| album.publish_time);
         Ok(format_publish_time(publish_time))
+    }
+
+    async fn fetch_song_tag_metadata(
+        &self,
+        song_ids: &[i64],
+    ) -> Result<HashMap<i64, SongTagMetadata>, ProviderError> {
+        if song_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let ids = song_ids
+            .iter()
+            .map(i64::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let payload: SongDetailResponse = self.get_api("song/detail", &[("ids", &ids)]).await?;
+        ensure_api_success(payload.code, "歌曲详情")?;
+
+        Ok(song_tag_metadata_from_details(payload.songs))
+    }
+
+    async fn song_tag_metadata(&self, song_ids: &[i64]) -> HashMap<i64, SongTagMetadata> {
+        match tokio::time::timeout(
+            ALBUM_INFO_REQUEST_TIMEOUT,
+            self.fetch_song_tag_metadata(song_ids),
+        )
+        .await
+        {
+            Ok(Ok(metadata)) => metadata,
+            Ok(Err(error)) => {
+                tracing::debug!(%error, "获取网易云歌曲详情失败，曲目和光盘序号将留空");
+                HashMap::new()
+            }
+            Err(_) => {
+                tracing::debug!("获取网易云歌曲详情超时，曲目和光盘序号将留空");
+                HashMap::new()
+            }
+        }
     }
 
     async fn album_date(&self, album_id: i64) -> String {
@@ -361,6 +422,9 @@ impl Provider for NeteaseProvider {
         })?;
         let SearchData { total, songs } = result;
 
+        let song_ids = songs.iter().map(|track| track.id).collect::<Vec<_>>();
+        let song_tag_metadata = self.song_tag_metadata(&song_ids).await;
+
         // cloudsearch 对部分歌曲返回 publishTime=0；只为缺日期的专辑补查一次详情。
         let mut seen_album_ids = HashSet::new();
         let album_ids = songs
@@ -380,7 +444,8 @@ impl Provider for NeteaseProvider {
             .into_iter()
             .map(|track| {
                 let album_date = album_dates.get(&track.album.id).map(String::as_str);
-                into_search_track(track, album_date)
+                let tag_metadata = song_tag_metadata.get(&track.id);
+                into_search_track(track, album_date, tag_metadata)
             })
             .collect();
 
@@ -477,6 +542,42 @@ where
     })
 }
 
+fn flexible_optional_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    Ok(match value {
+        None | Some(Value::Null) => None,
+        Some(Value::String(value)) => Some(value),
+        Some(Value::Number(value)) => Some(value.to_string()),
+        Some(_) => None,
+    })
+}
+
+fn song_tag_metadata_from_details(songs: Vec<SongDetail>) -> HashMap<i64, SongTagMetadata> {
+    songs
+        .into_iter()
+        .map(|song| {
+            let track_number = if song.no > 0 { song.no.to_string() } else { Default::default() };
+            let disc_number = song
+                .cd
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("null"))
+                .unwrap_or_default()
+                .to_string();
+            (
+                song.id,
+                SongTagMetadata {
+                    track_number,
+                    disc_number,
+                },
+            )
+        })
+        .collect()
+}
+
 fn has_trial_info(value: Option<&Value>) -> bool {
     match value {
         None | Some(Value::Null) => false,
@@ -489,7 +590,11 @@ fn has_trial_info(value: Option<&Value>) -> bool {
     }
 }
 
-fn into_search_track(track: Track, album_date: Option<&str>) -> SearchTrack {
+fn into_search_track(
+    track: Track,
+    album_date: Option<&str>,
+    tag_metadata: Option<&SongTagMetadata>,
+) -> SearchTrack {
     let date = {
         let search_date = format_publish_time(track.publish_time);
         if search_date.is_empty() {
@@ -515,6 +620,12 @@ fn into_search_track(track: Track, album_date: Option<&str>) -> SearchTrack {
         album_artist,
         date,
         cover_url: normalize_cover_url(&track.album.picture_url),
+        track_number: tag_metadata
+            .map(|metadata| metadata.track_number.clone())
+            .unwrap_or_default(),
+        disc_number: tag_metadata
+            .map(|metadata| metadata.disc_number.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -648,4 +759,32 @@ fn is_lossless_resource(value: &str, bitrate: Option<u64>, format: Option<&str>)
     }
 
     bitrate.is_some_and(|bitrate| (bitrate > 320 && bitrate < 10_000) || bitrate > 320_000)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_track_and_disc_numbers_from_song_detail() {
+        let response: SongDetailResponse = serde_json::from_str(
+            r#"{
+                "code":200,
+                "songs":[
+                    {"id":347230,"no":3,"cd":"1/2"},
+                    {"id":347231,"no":0,"cd":2},
+                    {"id":347232,"no":8,"cd":"null"}
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let metadata = song_tag_metadata_from_details(response.songs);
+        assert_eq!(metadata[&347230].track_number, "3");
+        assert_eq!(metadata[&347230].disc_number, "1/2");
+        assert_eq!(metadata[&347231].track_number, "");
+        assert_eq!(metadata[&347231].disc_number, "2");
+        assert_eq!(metadata[&347232].track_number, "8");
+        assert_eq!(metadata[&347232].disc_number, "");
+    }
 }

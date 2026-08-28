@@ -29,7 +29,15 @@ pub struct KuwoProvider {
     search_url: reqwest::Url,
     resolve_url: reqwest::Url,
     lyric_url: reqwest::Url,
-    album_cache: Cache<String, (String, String)>,
+    album_cache: Cache<String, AlbumMetadata>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct AlbumMetadata {
+    date: String,
+    artist: String,
+    track_numbers: HashMap<String, String>,
+    track_dates: HashMap<String, String>,
 }
 
 impl KuwoProvider {
@@ -67,25 +75,25 @@ impl KuwoProvider {
         Ok(data)
     }
 
-    // 获取发布时间和专辑艺人
-    async fn fetch_album_info(&self, album_id: &str) -> Result<(String, String), ProviderError> {
+    // 获取发布时间、专辑艺人和曲目序号
+    async fn fetch_album_info(&self, album_id: &str) -> Result<AlbumMetadata, ProviderError> {
         let mut url = self.search_url.clone();
         {
             let mut params = url.query_pairs_mut();
             params
-                .append_pair("pn", "1")
-                .append_pair("rn", "1")
+                .append_pair("pn", "0")
+                .append_pair("rn", "100")
                 .append_pair("albumid", album_id)
                 .append_pair("stype", "albuminfo")
-                .append_pair("showall", "0")
+                .append_pair("showall", "1")
                 .append_pair("pcjson", "1")
                 .append_pair("encoding", "utf8");
         }
         let info: AlbumInfo = self.get_json(url).await?;
-        Ok((info.date.trim().to_string(), info.artist.trim().to_string()))
+        Ok(album_metadata(info))
     }
 
-    async fn album_info(&self, album_id: &str) -> (String, String) {
+    async fn album_info(&self, album_id: &str) -> AlbumMetadata {
         // 如果有缓存且未到期，直接返回，如果发生错误，使用fallback
         if let Some(cached) = self.album_cache.get(album_id).await {
             return cached;
@@ -103,11 +111,11 @@ impl KuwoProvider {
             }
             Ok(Err(error)) => {
                 tracing::debug!(album_id,%error,"获取专辑信息失败，暂时使用搜索结果元数据");
-                (String::new(), String::new())
+                AlbumMetadata::default()
             }
             Err(_) => {
                 tracing::debug!(album_id, "获取专辑信息超时，暂时使用搜索结果元数据");
-                (String::new(), String::new())
+                AlbumMetadata::default()
             }
         }
     }
@@ -179,11 +187,18 @@ impl Provider for KuwoProvider {
             let mut album_date = String::new();
             let mut album_artist = item.album_artist;
 
-            if let Some((fetched_date, fetched_artist)) = album_infos.get(item.album_id.trim()) {
-                album_date = fetched_date.clone();
-                if !fetched_artist.is_empty() {
-                    album_artist = fetched_artist.clone();
+            let mut track_number = String::new();
+            if let Some(info) = album_infos.get(item.album_id.trim()) {
+                album_date = info
+                    .track_dates
+                    .get(&id)
+                    .filter(|date| !date.is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| info.date.clone());
+                if !info.artist.is_empty() {
+                    album_artist = info.artist.clone();
                 }
+                track_number = info.track_numbers.get(&id).cloned().unwrap_or_default();
             }
 
             tracks.push(SearchTrack {
@@ -195,6 +210,8 @@ impl Provider for KuwoProvider {
                 album_artist,
                 date: album_date,
                 cover_url: cover_url(&item.album_picture),
+                track_number,
+                disc_number: String::new(),
             });
         }
 
@@ -323,10 +340,52 @@ struct Track {
 
 #[derive(Debug, Deserialize)]
 struct AlbumInfo {
-    #[serde(rename = "pub")]
+    #[serde(default, rename = "pub")]
     date: String,
-    #[serde(rename = "artist")]
+    #[serde(default, rename = "artist")]
     artist: String,
+    #[serde(default, rename = "musiclist")]
+    music_list: Vec<AlbumTrack>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AlbumTrack {
+    #[serde(
+        default,
+        alias = "musicrid",
+        alias = "MUSICRID",
+        deserialize_with = "flexible_string"
+    )]
+    id: String,
+    #[serde(default, deserialize_with = "flexible_string")]
+    track: String,
+    #[serde(default, rename = "releasedate", deserialize_with = "flexible_string")]
+    release_date: String,
+}
+
+fn album_metadata(info: AlbumInfo) -> AlbumMetadata {
+    let mut track_numbers = HashMap::new();
+    let mut track_dates = HashMap::new();
+    for track in info.music_list {
+        let id = track.id.trim().trim_start_matches("MUSIC_");
+        if id.is_empty() {
+            continue;
+        }
+        let number = track.track.trim();
+        if !number.is_empty() {
+            track_numbers.insert(id.to_string(), number.to_string());
+        }
+        let release_date = track.release_date.trim();
+        if !release_date.is_empty() {
+            track_dates.insert(id.to_string(), release_date.to_string());
+        }
+    }
+    AlbumMetadata {
+        date: info.date.trim().to_string(),
+        artist: info.artist.trim().to_string(),
+        track_numbers,
+        track_dates,
+    }
 }
 
 fn flexible_int<'d, D>(deserializer: D) -> Result<usize, D::Error>
@@ -341,6 +400,18 @@ where
     };
 
     Ok(result)
+}
+
+fn flexible_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok(match value {
+        Value::String(value) => value,
+        Value::Number(value) => value.to_string(),
+        _ => String::new(),
+    })
 }
 
 fn parse_url(value: &str, name: &str) -> Result<reqwest::Url, ProviderError> {
@@ -382,4 +453,46 @@ fn cover_url(path: &str) -> String {
     p = p.strip_prefix("120/").unwrap_or(p);
 
     format!("{}{}", COVER_URL, p)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_track_numbers_from_album_info() {
+        let info: AlbumInfo = serde_json::from_str(
+            r#"{
+                "pub":"1993-05-01",
+                "artist":"Beyond",
+                "musiclist":[
+                    {"musicrid":"MUSIC_5886682","track":"6","releasedate":"1993-05-14"},
+                    {"id":123,"track":7,"releasedate":"1993-05-15"}
+                ],
+                "tag":[
+                    {"type":"Genre","cat1":"流行Pop","cat2":"流行摇滚Pop Rock"},
+                    {"type":"Genre","cat1":"摇滚Rock","cat2":""},
+                    {"type":"Language","cat1":"粤语","cat2":""}
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let metadata = album_metadata(info);
+        assert_eq!(metadata.date, "1993-05-01");
+        assert_eq!(metadata.artist, "Beyond");
+        assert_eq!(
+            metadata.track_numbers.get("5886682"),
+            Some(&"6".to_string())
+        );
+        assert_eq!(metadata.track_numbers.get("123"), Some(&"7".to_string()));
+        assert_eq!(
+            metadata.track_dates.get("5886682"),
+            Some(&"1993-05-14".to_string())
+        );
+        assert_eq!(
+            metadata.track_dates.get("123"),
+            Some(&"1993-05-15".to_string())
+        );
+    }
 }
