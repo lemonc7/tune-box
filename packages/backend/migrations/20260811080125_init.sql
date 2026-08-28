@@ -66,9 +66,10 @@ CREATE TABLE song_artists (
 
 CREATE INDEX idx_downloads_status_retry_created
     ON downloads(status, next_retry_at, created_at, id);
--- 同步曲库使用
-CREATE INDEX idx_songs_scan_token 
-    ON songs(scan_token);
+-- 曲库同步按最终路径关联已完成的下载任务，只索引可参与关联的记录
+CREATE INDEX idx_downloads_completed_path
+    ON downloads(path)
+    WHERE status = 'completed' AND path IS NOT NULL;
 -- 一个下载任务最多对应一首曲库歌曲，NULL 可重复
 CREATE UNIQUE INDEX idx_songs_download_id
     ON songs(download_id)
