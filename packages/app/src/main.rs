@@ -15,6 +15,7 @@ use crate::{
 use dioxus::prelude::*;
 
 static CSS: Asset = asset!("/assets/tailwind.css");
+static FAVICON: Asset = asset!("/assets/favicon.ico");
 
 #[cfg(not(feature = "server"))]
 fn main() {
@@ -80,6 +81,7 @@ fn App() -> Element {
     use_music_search_provider();
     rsx! {
       document::Stylesheet { href: CSS }
+      document::Link { rel: "icon", href: FAVICON }
       PlayerBar {}
       // 路由数据暂停时不能冒泡到Dioxus默认根边界，否则根边界会暂时卸载播放器。
       SuspenseBoundary { fallback: |_| rsx! {}, Router::<Route> {} }

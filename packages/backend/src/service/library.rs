@@ -363,7 +363,7 @@ fn sanitize_filename_component(value: &str, fallback: &str) -> String {
 async fn files_are_same(left: &Path, right: &Path) -> Result<bool, ServiceError> {
     cfg_select! {
       unix => {
-        os::unix::fs::MetadataExt;
+        use std::os::unix::fs::MetadataExt;
 
         let left = fs::metadata(left).await.map_err(DownloadError::Io)?;
         let right = fs::metadata(right).await.map_err(DownloadError::Io)?;

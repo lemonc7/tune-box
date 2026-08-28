@@ -30,6 +30,12 @@ pub struct Embedder {
     dns_timeout: Duration,
 }
 
+enum CoverUpdate {
+    Preserve,
+    Remove,
+    Replace(Vec<u8>),
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FlacInfo {
     pub title: String,
@@ -70,12 +76,20 @@ impl Embedder {
         metadata: Metadata,
         lyrics: String,
     ) -> Result<(), TagError> {
-        let cover_info = self.fetch_cover(&metadata.cover_url).await?;
+        let cover_update = match self.fetch_cover(&metadata.cover_url).await {
+            Ok(Some(data)) => CoverUpdate::Replace(data),
+            Ok(None) => CoverUpdate::Remove,
+            Err(error) => {
+                // 封面属于可选增强信息。获取失败时保留音频已有封面，继续写文字标签。
+                tracing::warn!(%error, "获取封面失败，保留原有封面继续写标签");
+                CoverUpdate::Preserve
+            }
+        };
         let path = path.as_ref().to_owned();
 
         // FLAC 解析和文件重写是同步阻塞操作，不能直接占用 Tokio worker。
         tokio::task::spawn_blocking(move || {
-            Self::write_flac_tags(&path, metadata, lyrics, cover_info)
+            Self::write_flac_tags(&path, metadata, lyrics, cover_update)
         })
         .await?
     }
@@ -84,7 +98,7 @@ impl Embedder {
         path: &Path,
         metadata: Metadata,
         lyrics: String,
-        cover_info: Option<Vec<u8>>,
+        cover_update: CoverUpdate,
     ) -> Result<(), TagError> {
         let mut reader = BufReader::new(File::open(path)?);
         // 这里只读取文件开头的元数据链。关闭音频属性计算可以避免为时长、码率等
@@ -113,19 +127,21 @@ impl Embedder {
         Self::set_tag_field(&mut tag, "TRACKNUMBER", metadata.track_number);
         Self::set_tag_field(&mut tag, "DISCNUMBER", metadata.disc_number);
 
-        // metadata是完整快照：先清理旧的正面封面；其他类型图片保持不变。
-        pictures.retain(|(picture, _)| picture.pic_type() != PictureType::CoverFront);
-        if let Some(data) = cover_info {
-            // 根据图片签名识别实际格式，避免仅信任 HTTP Content-Type。
-            let mut picture = Picture::from_reader(&mut Cursor::new(data))
-                .map_err(|_| TagError::UnsupportedCoverFormat)?;
-            if !matches!(picture.mime_type(), Some(MimeType::Jpeg | MimeType::Png)) {
-                return Err(TagError::UnsupportedCoverFormat);
+        match cover_update {
+            CoverUpdate::Preserve => {}
+            CoverUpdate::Remove => {
+                pictures.retain(|(picture, _)| picture.pic_type() != PictureType::CoverFront);
             }
-            picture.set_pic_type(PictureType::CoverFront);
-            let information = PictureInformation::from_picture(&picture)
-                .map_err(|_| TagError::UnsupportedCoverFormat)?;
-            pictures.push((picture, information));
+            CoverUpdate::Replace(data) => match front_cover(data) {
+                Ok(cover) => {
+                    pictures.retain(|(picture, _)| picture.pic_type() != PictureType::CoverFront);
+                    pictures.push(cover);
+                }
+                Err(error) => {
+                    // 图片内容损坏或格式不支持时同样降级，并保留音频原有封面。
+                    tracing::warn!(%error, "解析封面失败，保留原有封面继续写标签");
+                }
+            },
         }
 
         flac_writer::rewrite_flac_tags(path, &tag, &pictures)
@@ -222,6 +238,19 @@ impl Embedder {
 
         Ok(info)
     }
+}
+
+fn front_cover(data: Vec<u8>) -> Result<(Picture, PictureInformation), TagError> {
+    // 根据图片签名识别实际格式，避免仅信任 HTTP Content-Type。
+    let mut picture = Picture::from_reader(&mut Cursor::new(data))
+        .map_err(|_| TagError::UnsupportedCoverFormat)?;
+    if !matches!(picture.mime_type(), Some(MimeType::Jpeg | MimeType::Png)) {
+        return Err(TagError::UnsupportedCoverFormat);
+    }
+    picture.set_pic_type(PictureType::CoverFront);
+    let information =
+        PictureInformation::from_picture(&picture).map_err(|_| TagError::UnsupportedCoverFormat)?;
+    Ok((picture, information))
 }
 
 #[derive(Clone, Copy)]

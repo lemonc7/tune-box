@@ -171,11 +171,21 @@ impl Downloader {
                 .get(header::CONTENT_RANGE)
                 .and_then(|value| value.to_str().ok())
                 .ok_or(DownloadError::InvalidRange)?;
-            let (start, range_total) = parse_content_range(value)?;
-            if start != downloaded {
+            let range = parse_content_range(value)?;
+            if range.start != downloaded {
                 return Err(DownloadError::InvalidRange);
             }
-            total = Some(range_total);
+            // 请求的是 `bytes={downloaded}-`，因此响应范围必须一直覆盖到文件末尾。
+            // 同时校验响应体声明长度，避免在流读取完成后才发现范围响应不完整。
+            let range_length = range.end - range.start + 1;
+            if range.end + 1 != range.total
+                || resp
+                    .content_length()
+                    .is_some_and(|length| length != range_length)
+            {
+                return Err(DownloadError::InvalidRange);
+            }
+            total = Some(range.total);
         }
 
         if total.is_some_and(|total| total > self.max_bytes) {
@@ -288,7 +298,14 @@ fn is_non_audio_content_type(content_type: &str) -> bool {
         || media_type.ends_with("+json")
 }
 
-fn parse_content_range(value: &str) -> Result<(u64, u64), DownloadError> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ContentRange {
+    start: u64,
+    end: u64,
+    total: u64,
+}
+
+fn parse_content_range(value: &str) -> Result<ContentRange, DownloadError> {
     let value = value
         .strip_prefix("bytes ")
         .ok_or(DownloadError::InvalidRange)?;
@@ -302,5 +319,35 @@ fn parse_content_range(value: &str) -> Result<(u64, u64), DownloadError> {
         return Err(DownloadError::InvalidRange);
     }
 
-    Ok((start, end))
+    Ok(ContentRange { start, end, total })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ContentRange, parse_content_range};
+
+    #[test]
+    fn parses_content_range_with_total_size() {
+        assert_eq!(
+            parse_content_range("bytes 100-999/1000").unwrap(),
+            ContentRange {
+                start: 100,
+                end: 999,
+                total: 1000,
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_content_ranges() {
+        for value in [
+            "bytes 100-99/1000",
+            "bytes 100-1000/1000",
+            "bytes */1000",
+            "items 100-999/1000",
+            "bytes 100-999/*",
+        ] {
+            assert!(parse_content_range(value).is_err(), "{value}");
+        }
+    }
 }

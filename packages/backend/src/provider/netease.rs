@@ -1,11 +1,7 @@
-use std::{
-    collections::{HashMap, HashSet},
-    time::Duration,
-};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use contracts::music::{MusicResult, Track as SearchTrack};
-use futures_util::{StreamExt, stream};
 use reqwest::{StatusCode, Url, header};
 use serde::{Deserialize, Deserializer, de::DeserializeOwned};
 use serde_json::Value;
@@ -13,13 +9,13 @@ use time::{OffsetDateTime, UtcOffset};
 
 use crate::{
     error::ProviderError,
-    provider::{DOWNLOAD_QUALITY_ID, PREVIEW_QUALITY_ID, Provider, ResolvedResource, USER_AGENT},
+    provider::{
+        DOWNLOAD_QUALITY_ID, PREVIEW_QUALITY_ID, Provider, ResolvedResource, USER_AGENT,
+        decode_json_response, read_limited_response,
+    },
 };
 
-const ALBUM_INFO_CONCURRENCY: usize = 6;
-const MAX_ALBUM_INFO_PER_SEARCH: usize = 30;
-const ALBUM_INFO_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
-const MAX_EXTENDED_RESPONSE_BYTES: u64 = 64 * 1024;
+const MAX_EXTENDED_RESPONSE_BYTES: usize = 64 * 1024;
 
 pub struct NeteaseProvider {
     client: reqwest::Client,
@@ -52,6 +48,10 @@ struct Track {
     album: Album,
     #[serde(default, rename = "publishTime")]
     publish_time: Option<i64>,
+    #[serde(default)]
+    no: u32,
+    #[serde(default, deserialize_with = "flexible_optional_string")]
+    cd: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,8 +62,6 @@ struct Artist {
 
 #[derive(Debug, Default, Deserialize)]
 struct Album {
-    #[serde(default)]
-    id: i64,
     #[serde(default)]
     name: String,
     #[serde(default, rename = "picUrl")]
@@ -81,42 +79,6 @@ struct LyricResponse {
 struct LyricData {
     #[serde(default)]
     lyric: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct AlbumDetailResponse {
-    #[serde(default)]
-    code: i32,
-    album: Option<AlbumDetail>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AlbumDetail {
-    #[serde(default, rename = "publishTime")]
-    publish_time: Option<i64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SongDetailResponse {
-    #[serde(default)]
-    code: i32,
-    #[serde(default)]
-    songs: Vec<SongDetail>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SongDetail {
-    id: i64,
-    #[serde(default)]
-    no: u32,
-    #[serde(default, deserialize_with = "flexible_optional_string")]
-    cd: Option<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct SongTagMetadata {
-    track_number: String,
-    disc_number: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,69 +163,7 @@ impl NeteaseProvider {
             .await?
             .error_for_status()?;
 
-        Ok(response.json::<T>().await?)
-    }
-
-    async fn fetch_album_date(&self, album_id: i64) -> Result<String, ProviderError> {
-        let album_id = album_id.to_string();
-        let payload: AlbumDetailResponse = self.get_api("album", &[("id", &album_id)]).await?;
-        ensure_api_success(payload.code, "专辑详情")?;
-        let publish_time = payload.album.and_then(|album| album.publish_time);
-        Ok(format_publish_time(publish_time))
-    }
-
-    async fn fetch_song_tag_metadata(
-        &self,
-        song_ids: &[i64],
-    ) -> Result<HashMap<i64, SongTagMetadata>, ProviderError> {
-        if song_ids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let ids = song_ids
-            .iter()
-            .map(i64::to_string)
-            .collect::<Vec<_>>()
-            .join(",");
-        let payload: SongDetailResponse = self.get_api("song/detail", &[("ids", &ids)]).await?;
-        ensure_api_success(payload.code, "歌曲详情")?;
-
-        Ok(song_tag_metadata_from_details(payload.songs))
-    }
-
-    async fn song_tag_metadata(&self, song_ids: &[i64]) -> HashMap<i64, SongTagMetadata> {
-        match tokio::time::timeout(
-            ALBUM_INFO_REQUEST_TIMEOUT,
-            self.fetch_song_tag_metadata(song_ids),
-        )
-        .await
-        {
-            Ok(Ok(metadata)) => metadata,
-            Ok(Err(error)) => {
-                tracing::debug!(%error, "获取网易云歌曲详情失败，曲目和光盘序号将留空");
-                HashMap::new()
-            }
-            Err(_) => {
-                tracing::debug!("获取网易云歌曲详情超时，曲目和光盘序号将留空");
-                HashMap::new()
-            }
-        }
-    }
-
-    async fn album_date(&self, album_id: i64) -> String {
-        match tokio::time::timeout(ALBUM_INFO_REQUEST_TIMEOUT, self.fetch_album_date(album_id))
-            .await
-        {
-            Ok(Ok(value)) => value,
-            Ok(Err(error)) => {
-                tracing::debug!(album_id, %error, "获取网易云专辑日期失败，保留搜索结果元数据");
-                String::new()
-            }
-            Err(_) => {
-                tracing::debug!(album_id, "获取网易云专辑日期超时，保留搜索结果元数据");
-                String::new()
-            }
-        }
+        decode_json_response(response, "网易云API").await
     }
 
     async fn resolve_from_api(
@@ -306,20 +206,9 @@ impl NeteaseProvider {
                 status,
             )));
         }
-        if response
-            .content_length()
-            .is_some_and(|length| length > MAX_EXTENDED_RESPONSE_BYTES)
-        {
-            return Err(ProviderError::InvalidResponse(
-                "网易云扩展解析接口响应过大".to_string(),
-            ));
-        }
-        let body = response.bytes().await?;
-        if body.len() as u64 > MAX_EXTENDED_RESPONSE_BYTES {
-            return Err(ProviderError::InvalidResponse(
-                "网易云扩展解析接口响应过大".to_string(),
-            ));
-        }
+        let body =
+            read_limited_response(response, "网易云扩展解析接口", MAX_EXTENDED_RESPONSE_BYTES)
+                .await?;
         let response =
             serde_json::from_slice::<ExtendedResolveResponse>(&body).map_err(|error| {
                 ProviderError::InvalidResponse(format!(
@@ -422,32 +311,7 @@ impl Provider for NeteaseProvider {
         })?;
         let SearchData { total, songs } = result;
 
-        let song_ids = songs.iter().map(|track| track.id).collect::<Vec<_>>();
-        let song_tag_metadata = self.song_tag_metadata(&song_ids).await;
-
-        // cloudsearch 对部分歌曲返回 publishTime=0；只为缺日期的专辑补查一次详情。
-        let mut seen_album_ids = HashSet::new();
-        let album_ids = songs
-            .iter()
-            .filter(|track| track.publish_time.unwrap_or_default() <= 0)
-            .map(|track| track.album.id)
-            .filter(|album_id| *album_id > 0)
-            .filter(|album_id| seen_album_ids.insert(*album_id))
-            .take(MAX_ALBUM_INFO_PER_SEARCH)
-            .collect::<Vec<_>>();
-        let album_dates = stream::iter(album_ids)
-            .map(|album_id| async move { (album_id, self.album_date(album_id).await) })
-            .buffer_unordered(ALBUM_INFO_CONCURRENCY)
-            .collect::<HashMap<_, _>>()
-            .await;
-        let tracks = songs
-            .into_iter()
-            .map(|track| {
-                let album_date = album_dates.get(&track.album.id).map(String::as_str);
-                let tag_metadata = song_tag_metadata.get(&track.id);
-                into_search_track(track, album_date, tag_metadata)
-            })
-            .collect();
+        let tracks = songs.into_iter().map(into_search_track).collect();
 
         Ok(MusicResult {
             provider: self.id().to_string(),
@@ -555,29 +419,6 @@ where
     })
 }
 
-fn song_tag_metadata_from_details(songs: Vec<SongDetail>) -> HashMap<i64, SongTagMetadata> {
-    songs
-        .into_iter()
-        .map(|song| {
-            let track_number = if song.no > 0 { song.no.to_string() } else { Default::default() };
-            let disc_number = song
-                .cd
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("null"))
-                .unwrap_or_default()
-                .to_string();
-            (
-                song.id,
-                SongTagMetadata {
-                    track_number,
-                    disc_number,
-                },
-            )
-        })
-        .collect()
-}
-
 fn has_trial_info(value: Option<&Value>) -> bool {
     match value {
         None | Some(Value::Null) => false,
@@ -590,18 +431,19 @@ fn has_trial_info(value: Option<&Value>) -> bool {
     }
 }
 
-fn into_search_track(
-    track: Track,
-    album_date: Option<&str>,
-    tag_metadata: Option<&SongTagMetadata>,
-) -> SearchTrack {
-    let date = {
-        let search_date = format_publish_time(track.publish_time);
-        if search_date.is_empty() {
-            album_date.unwrap_or_default().to_string()
-        } else {
-            search_date
-        }
+fn into_search_track(track: Track) -> SearchTrack {
+    let date = format_publish_time(track.publish_time);
+    let disc_number = track
+        .cd
+        .as_deref()
+        .filter(|value| valid_disc_number(value))
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    let track_number = if track.no > 0 {
+        track.no.to_string()
+    } else {
+        String::new()
     };
     let artists = track
         .artists
@@ -620,13 +462,14 @@ fn into_search_track(
         album_artist,
         date,
         cover_url: normalize_cover_url(&track.album.picture_url),
-        track_number: tag_metadata
-            .map(|metadata| metadata.track_number.clone())
-            .unwrap_or_default(),
-        disc_number: tag_metadata
-            .map(|metadata| metadata.disc_number.clone())
-            .unwrap_or_default(),
+        track_number,
+        disc_number,
     }
+}
+
+fn valid_disc_number(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty() && !value.eq_ignore_ascii_case("null")
 }
 
 fn format_publish_time(timestamp_ms: Option<i64>) -> String {
@@ -766,25 +609,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_track_and_disc_numbers_from_song_detail() {
-        let response: SongDetailResponse = serde_json::from_str(
+    fn parses_complete_cloudsearch_metadata() {
+        let response: SearchResponse = serde_json::from_str(
             r#"{
                 "code":200,
-                "songs":[
-                    {"id":347230,"no":3,"cd":"1/2"},
-                    {"id":347231,"no":0,"cd":2},
-                    {"id":347232,"no":8,"cd":"null"}
-                ]
+                "result":{
+                    "songCount":1,
+                    "songs":[{
+                        "id":347230,
+                        "name":"歌曲标题",
+                        "ar":[{"name":"歌曲歌手"}],
+                        "al":{
+                            "id":321,
+                            "name":"歌曲专辑",
+                            "picUrl":"http://example.com/cover.jpg"
+                        },
+                        "publishTime":946684800000,
+                        "no":3,
+                        "cd":"1/2"
+                    }]
+                }
             }"#,
         )
         .unwrap();
 
-        let metadata = song_tag_metadata_from_details(response.songs);
-        assert_eq!(metadata[&347230].track_number, "3");
-        assert_eq!(metadata[&347230].disc_number, "1/2");
-        assert_eq!(metadata[&347231].track_number, "");
-        assert_eq!(metadata[&347231].disc_number, "2");
-        assert_eq!(metadata[&347232].track_number, "8");
-        assert_eq!(metadata[&347232].disc_number, "");
+        let track = into_search_track(response.result.unwrap().songs.pop().unwrap());
+
+        assert_eq!(track.name, "歌曲标题");
+        assert_eq!(track.artists, ["歌曲歌手"]);
+        assert_eq!(track.album, "歌曲专辑");
+        assert_eq!(track.date, "2000-01-01");
+        assert_eq!(track.cover_url, "https://example.com/cover.jpg");
+        assert_eq!(track.track_number, "3");
+        assert_eq!(track.disc_number, "1/2");
     }
 }

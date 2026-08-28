@@ -206,12 +206,14 @@ impl Service {
         };
         let lyrics = match lyrics {
             Ok(lyrics) => lyrics,
-            Err(error) => {
+            Err(error) if is_interrupted(&error) => {
                 self.handle_tagging_failure(&task, &error).await?;
-                if is_interrupted(&error) {
-                    return Ok(());
-                }
-                return Err(error);
+                return Ok(());
+            }
+            Err(error) => {
+                // 歌词属于可选增强信息，不应阻止已经下载完成的音频进入曲库。
+                tracing::warn!(task_id = task.id, %error, "获取歌词失败，使用空歌词继续写标签");
+                String::new()
             }
         };
 

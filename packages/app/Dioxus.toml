@@ -9,7 +9,6 @@ title = "tune-box"
 [web.watcher]
 reload_html = true
 watch_path = ["src", "assets"]
-index_on_404 = true
 
 [web.resource]
 style = []

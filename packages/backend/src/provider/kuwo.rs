@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use crate::{
     error::ProviderError,
-    provider::{Provider, ResolvedResource, USER_AGENT},
+    provider::{Provider, ResolvedResource, USER_AGENT, decode_json_response},
 };
 
 const COVER_URL: &str = "https://img3.kuwo.cn/star/albumcover/500/";
@@ -36,8 +36,13 @@ pub struct KuwoProvider {
 struct AlbumMetadata {
     date: String,
     artist: String,
-    track_numbers: HashMap<String, String>,
-    track_dates: HashMap<String, String>,
+    tracks: HashMap<String, AlbumTrackMetadata>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct AlbumTrackMetadata {
+    date: String,
+    track_number: String,
 }
 
 impl KuwoProvider {
@@ -70,9 +75,7 @@ impl KuwoProvider {
             .send()
             .await?
             .error_for_status()?;
-        let data = resp.json::<T>().await?;
-
-        Ok(data)
+        decode_json_response(resp, "酷我API").await
     }
 
     // 获取发布时间、专辑艺人和曲目序号
@@ -186,19 +189,19 @@ impl Provider for KuwoProvider {
             let id = item.music_rid.trim_start_matches("MUSIC_").to_string();
             let mut album_date = String::new();
             let mut album_artist = item.album_artist;
-
             let mut track_number = String::new();
+
             if let Some(info) = album_infos.get(item.album_id.trim()) {
-                album_date = info
-                    .track_dates
-                    .get(&id)
-                    .filter(|date| !date.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| info.date.clone());
+                album_date = info.date.clone();
                 if !info.artist.is_empty() {
                     album_artist = info.artist.clone();
                 }
-                track_number = info.track_numbers.get(&id).cloned().unwrap_or_default();
+                if let Some(metadata) = info.tracks.get(&id) {
+                    if !metadata.date.is_empty() {
+                        album_date.clone_from(&metadata.date);
+                    }
+                    track_number.clone_from(&metadata.track_number);
+                }
             }
 
             tracks.push(SearchTrack {
@@ -211,6 +214,7 @@ impl Provider for KuwoProvider {
                 date: album_date,
                 cover_url: cover_url(&item.album_picture),
                 track_number,
+                // 酷我 albuminfo 不提供碟号，多碟专辑的 track 也是连续编号，无法可靠推断。
                 disc_number: String::new(),
             });
         }
@@ -350,41 +354,48 @@ struct AlbumInfo {
 
 #[derive(Debug, Deserialize)]
 struct AlbumTrack {
-    #[serde(
-        default,
-        alias = "musicrid",
-        alias = "MUSICRID",
-        deserialize_with = "flexible_string"
-    )]
+    #[serde(default, deserialize_with = "flexible_string")]
     id: String,
+    #[serde(default, rename = "musicrid", deserialize_with = "flexible_string")]
+    music_rid: String,
+    #[serde(default, rename = "MUSICRID", deserialize_with = "flexible_string")]
+    legacy_music_rid: String,
     #[serde(default, deserialize_with = "flexible_string")]
     track: String,
     #[serde(default, rename = "releasedate", deserialize_with = "flexible_string")]
     release_date: String,
 }
 
+impl AlbumTrack {
+    fn id(&self) -> &str {
+        [&self.id, &self.music_rid, &self.legacy_music_rid]
+            .into_iter()
+            .map(|value| value.trim())
+            .find(|value| !value.is_empty())
+            .unwrap_or_default()
+    }
+}
+
 fn album_metadata(info: AlbumInfo) -> AlbumMetadata {
-    let mut track_numbers = HashMap::new();
-    let mut track_dates = HashMap::new();
+    let mut tracks = HashMap::new();
     for track in info.music_list {
-        let id = track.id.trim().trim_start_matches("MUSIC_");
+        let id = track.id().trim_start_matches("MUSIC_");
         if id.is_empty() {
             continue;
         }
-        let number = track.track.trim();
-        if !number.is_empty() {
-            track_numbers.insert(id.to_string(), number.to_string());
-        }
-        let release_date = track.release_date.trim();
-        if !release_date.is_empty() {
-            track_dates.insert(id.to_string(), release_date.to_string());
-        }
+
+        tracks.insert(
+            id.to_string(),
+            AlbumTrackMetadata {
+                date: track.release_date.trim().to_string(),
+                track_number: track.track.trim().to_string(),
+            },
+        );
     }
     AlbumMetadata {
         date: info.date.trim().to_string(),
         artist: info.artist.trim().to_string(),
-        track_numbers,
-        track_dates,
+        tracks,
     }
 }
 
@@ -460,14 +471,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_track_numbers_from_album_info() {
+    fn parses_real_album_track_shape_and_metadata_fallbacks() {
         let info: AlbumInfo = serde_json::from_str(
             r#"{
                 "pub":"1993-05-01",
                 "artist":"Beyond",
                 "musiclist":[
-                    {"musicrid":"MUSIC_5886682","track":"6","releasedate":"1993-05-14"},
-                    {"id":123,"track":7,"releasedate":"1993-05-15"}
+                    {
+                        "id":"5886682",
+                        "musicrid":"5886682",
+                        "track":"6",
+                        "releasedate":"1993-05-14"
+                    },
+                    {
+                        "musicrid":"MUSIC_123",
+                        "MUSICRID":"MUSIC_ignored",
+                        "track":7,
+                        "releasedate":"1993-05-15"
+                    }
                 ],
                 "tag":[
                     {"type":"Genre","cat1":"流行Pop","cat2":"流行摇滚Pop Rock"},
@@ -481,18 +502,9 @@ mod tests {
         let metadata = album_metadata(info);
         assert_eq!(metadata.date, "1993-05-01");
         assert_eq!(metadata.artist, "Beyond");
-        assert_eq!(
-            metadata.track_numbers.get("5886682"),
-            Some(&"6".to_string())
-        );
-        assert_eq!(metadata.track_numbers.get("123"), Some(&"7".to_string()));
-        assert_eq!(
-            metadata.track_dates.get("5886682"),
-            Some(&"1993-05-14".to_string())
-        );
-        assert_eq!(
-            metadata.track_dates.get("123"),
-            Some(&"1993-05-15".to_string())
-        );
+        assert_eq!(metadata.tracks["5886682"].track_number, "6");
+        assert_eq!(metadata.tracks["5886682"].date, "1993-05-14");
+        assert_eq!(metadata.tracks["123"].track_number, "7");
+        assert_eq!(metadata.tracks["123"].date, "1993-05-15");
     }
 }
