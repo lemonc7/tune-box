@@ -65,7 +65,9 @@ impl From<SearchMusicArgs> for SearchRequest {
 
 #[tool_router]
 impl MusicMcp {
-    #[tool(description = "按照关键词搜索歌曲。该操作只读取数据，不会创建下载任务。")]
+    #[tool(
+        description = "按照关键词搜索歌曲，只读取数据，不创建下载任务。provider 应优先传 netease，因为网易云的日期、曲序、碟号等元数据通常更完整；仅在用户明确指定或网易云不可用、无合适结果时传 kuwo。"
+    )]
     async fn search_music(
         &self,
         Parameters(args): Parameters<SearchMusicArgs>,
@@ -79,7 +81,9 @@ impl MusicMcp {
         serde_json::to_string(&result).map_err(|error| error.to_string())
     }
 
-    #[tool(description = "创建下载任务，并立即唤醒下载管理器。")]
+    #[tool(
+        description = "使用搜索结果创建下载任务并立即唤醒下载管理器。provider、track_id 和 metadata 必须沿用同一条搜索结果；不要用另一个音乐源的 ID 或自行补造缺失标签。"
+    )]
     async fn create_download(
         &self,
         Parameters(args): Parameters<CreateDownloadArgs>,
@@ -300,6 +304,6 @@ fn task_result(
 
 #[tool_handler(
     name = "tune-box",
-    instructions = "用于搜索音乐、创建下载任务以及管理下载状态。"
+    instructions = "用于搜索音乐、创建下载任务以及管理下载状态。搜索音乐时默认并优先使用 netease，因为网易云 metadata 通常更完整准确；只有用户明确指定，或网易云请求失败、没有合适结果时，才使用 kuwo 兜底。创建下载任务时必须原样沿用所选搜索结果的 provider、track_id 和 metadata，不要混用不同音乐源的 ID，也不要为缺失字段编造默认值。"
 )]
 impl ServerHandler for MusicMcp {}

@@ -194,7 +194,7 @@ fn retain_new_tracks(existing: &[Track], incoming: &mut Vec<Track>) -> usize {
 
 pub fn use_music_search_provider() -> MusicSearchSession {
     let session = MusicSearchSession {
-        provider: use_signal(|| None),
+        provider: use_signal(|| Some("netease".to_owned())),
         query: use_signal(String::new),
         list_scroll_top: use_signal(|| 0.0),
         search: use_music_search(),
