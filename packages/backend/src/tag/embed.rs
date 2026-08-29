@@ -1,7 +1,6 @@
 use std::{
     fs::File,
-    io::{self, BufReader, Cursor},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    io::BufReader,
     path::Path,
     time::Duration,
 };
@@ -15,15 +14,19 @@ use lofty::{
     ogg::{OggPictureStorage, tag::VorbisComments},
     picture::{MimeType, Picture, PictureInformation, PictureType},
 };
-use reqwest::{
-    Url,
-    dns::{Addrs, Name, Resolve, Resolving},
-    redirect,
+use reqwest::Url;
+
+use crate::{
+    error::TagError,
+    net::{NetError, PublicDnsResolver, public_redirect_policy, validate_public_url},
+    tag::flac_writer,
 };
 
-use crate::{error::TagError, tag::flac_writer};
-
-const MAX_COVER_BYTES: usize = 8 * 1024 * 1024;
+// 封面下载上限。内嵌封面通常只有几百 KB，4MB 足以容纳高分辨率图片。
+// 这个值同时决定单个打标签任务的瞬时内存峰值，调大要按并发数重新估算。
+const MAX_COVER_BYTES: usize = 4 * 1024 * 1024;
+// 封面缓冲区的起始容量。
+const INITIAL_COVER_CAPACITY: usize = 64 * 1024;
 
 pub struct Embedder {
     client: reqwest::Client,
@@ -50,19 +53,9 @@ impl Embedder {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .read_timeout(timeout)
-            .redirect(redirect::Policy::custom(|attempt| {
-                if attempt.previous().len() >= 5 {
-                    attempt.error("封面图重定向次数过多")
-                } else if has_safe_url_destination(attempt.url()) {
-                    attempt.follow()
-                } else {
-                    attempt.stop()
-                }
-            }))
+            .redirect(public_redirect_policy())
             .no_proxy()
-            .dns_resolver(PublicDnsResolver {
-                timeout: dns_timeout,
-            })
+            .dns_resolver(PublicDnsResolver::new(timeout))
             .build()?;
         Ok(Self {
             client,
@@ -185,7 +178,12 @@ impl Embedder {
         }
 
         let url = Url::parse(cover_url).map_err(|_| TagError::InvalidCoverUrl)?;
-        validate_public_url(&url, self.dns_timeout).await?;
+        validate_public_url(&url, self.dns_timeout)
+            .await
+            .map_err(|error| match error {
+                NetError::NotPublicAddress => TagError::InvalidCoverUrl,
+                NetError::Resolve(error) => TagError::ResolveCoverHost(error),
+            })?;
 
         let resp = self.client.get(url.as_str()).send().await?;
         let status = resp.status();
@@ -198,9 +196,10 @@ impl Embedder {
             return Err(TagError::CoverSizeInvalid);
         }
 
-        // Content-Length 已经过上限校验；预分配可避免正常封面下载时多次扩容。
-        // 响应没有长度时仍从空 Vec 开始，并由下面的累计大小检查兜底。
-        let mut data = Vec::with_capacity(content_length.unwrap_or(0) as usize);
+        // 起始容量固定，不按远端声明的 Content-Length 预分配：那个值由对端控制，
+        // 会把单个任务的峰值直接顶到上限。正常封面只有几百 KB，扩容次数很少；
+        // 响应超过上限时由下面的累计大小检查兜底截断。
+        let mut data = Vec::with_capacity(INITIAL_COVER_CAPACITY);
         let mut stream = resp.bytes_stream();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
@@ -242,131 +241,22 @@ impl Embedder {
 
 fn front_cover(data: Vec<u8>) -> Result<(Picture, PictureInformation), TagError> {
     // 根据图片签名识别实际格式，避免仅信任 HTTP Content-Type。
-    let mut picture = Picture::from_reader(&mut Cursor::new(data))
-        .map_err(|_| TagError::UnsupportedCoverFormat)?;
-    if !matches!(picture.mime_type(), Some(MimeType::Jpeg | MimeType::Png)) {
-        return Err(TagError::UnsupportedCoverFormat);
-    }
-    picture.set_pic_type(PictureType::CoverFront);
+    // 只接受 FLAC 常用的 PNG/JPEG，签名规则与 lofty 内部一致。
+    let mime_type = match data.first_chunk::<8>() {
+        Some([0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) => MimeType::Png,
+        Some([0xFF, 0xD8, ..]) => MimeType::Jpeg,
+        _ => return Err(TagError::UnsupportedCoverFormat),
+    };
+
+    // unchecked 直接接管 Vec。from_reader 内部会 read_to_end 再整块复制一份，
+    // 峰值等于封面大小的两倍；这里只保留一份数据并原地转移所有权。
+    let picture = Picture::unchecked(data)
+        .mime_type(mime_type)
+        .pic_type(PictureType::CoverFront)
+        .build();
     let information =
         PictureInformation::from_picture(&picture).map_err(|_| TagError::UnsupportedCoverFormat)?;
     Ok((picture, information))
-}
-
-#[derive(Clone, Copy)]
-struct PublicDnsResolver {
-    timeout: Duration,
-}
-
-impl Resolve for PublicDnsResolver {
-    fn resolve(&self, name: Name) -> Resolving {
-        let host = name.as_str().to_owned();
-        let timeout = self.timeout;
-        Box::pin(async move {
-            let addresses =
-                tokio::time::timeout(timeout, tokio::net::lookup_host((host.as_str(), 0)))
-                    .await
-                    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "解析封面图域名超时"))??;
-            let addresses = addresses
-                .filter(|address| is_public_ip(address.ip()))
-                .collect::<Vec<_>>();
-            if addresses.is_empty() {
-                return Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "目标域名没有可用的公网地址",
-                )
-                .into());
-            }
-            Ok(Box::new(addresses.into_iter()) as Addrs)
-        })
-    }
-}
-
-async fn validate_public_url(url: &Url, timeout: Duration) -> Result<(), TagError> {
-    if !has_safe_url_destination(url) {
-        return Err(TagError::InvalidCoverUrl);
-    }
-
-    let port = url
-        .port_or_known_default()
-        .ok_or(TagError::InvalidCoverUrl)?;
-    match url.host().ok_or(TagError::InvalidCoverUrl)? {
-        url::Host::Ipv4(address) => {
-            if !is_public_ip(IpAddr::V4(address)) {
-                return Err(TagError::InvalidCoverUrl);
-            }
-        }
-        url::Host::Ipv6(address) => {
-            if !is_public_ip(IpAddr::V6(address)) {
-                return Err(TagError::InvalidCoverUrl);
-            }
-        }
-        url::Host::Domain(host) => {
-            let addresses = tokio::time::timeout(timeout, tokio::net::lookup_host((host, port)))
-                .await
-                .map_err(|_| {
-                    TagError::ResolveCoverHost(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        "解析封面图域名超时",
-                    ))
-                })?
-                .map_err(TagError::ResolveCoverHost)?
-                .collect::<Vec<SocketAddr>>();
-            if addresses.is_empty() || addresses.iter().any(|address| !is_public_ip(address.ip())) {
-                return Err(TagError::InvalidCoverUrl);
-            }
-        }
-    }
-    Ok(())
-}
-
-fn has_safe_url_destination(url: &Url) -> bool {
-    if !matches!(url.scheme(), "http" | "https")
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
-        return false;
-    }
-
-    match url.host() {
-        Some(url::Host::Ipv4(address)) => is_public_ip(IpAddr::V4(address)),
-        Some(url::Host::Ipv6(address)) => is_public_ip(IpAddr::V6(address)),
-        Some(url::Host::Domain(host)) => !host.eq_ignore_ascii_case("localhost"),
-        None => false,
-    }
-}
-
-fn is_public_ip(address: IpAddr) -> bool {
-    match address {
-        IpAddr::V4(address) => is_public_ipv4(address),
-        IpAddr::V6(address) => is_public_ipv6(address),
-    }
-}
-
-fn is_public_ipv4(address: Ipv4Addr) -> bool {
-    let [a, b, c, _] = address.octets();
-    !(a == 0
-        || a == 10
-        || a == 127
-        || (a == 100 && (64..=127).contains(&b))
-        || (a == 169 && b == 254)
-        || (a == 172 && (16..=31).contains(&b))
-        || (a == 192 && b == 0 && c == 0)
-        || (a == 192 && b == 0 && c == 2)
-        || (a == 192 && b == 168)
-        || (a == 198 && (b == 18 || b == 19))
-        || (a == 198 && b == 51 && c == 100)
-        || (a == 203 && b == 0 && c == 113)
-        || a >= 224)
-}
-
-fn is_public_ipv6(address: Ipv6Addr) -> bool {
-    if let Some(mapped) = address.to_ipv4_mapped() {
-        return is_public_ipv4(mapped);
-    }
-    let segments = address.segments();
-    // 只允许 2000::/3 全球单播，并排除文档地址 2001:db8::/32。
-    (segments[0] & 0xe000) == 0x2000 && !(segments[0] == 0x2001 && segments[1] == 0x0db8)
 }
 
 fn artists_from_tag(tag: &VorbisComments) -> Vec<String> {
@@ -462,38 +352,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_non_public_cover_addresses() {
-        for address in [
-            "127.0.0.1",
-            "10.0.0.1",
-            "100.64.0.1",
-            "169.254.1.1",
-            "172.16.0.1",
-            "192.168.0.1",
-            "224.0.0.1",
-            "::1",
-            "fc00::1",
-            "fe80::1",
-            "2001:db8::1",
-        ] {
-            assert!(!is_public_ip(address.parse().unwrap()), "{address}");
-        }
-        for address in ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"] {
-            assert!(is_public_ip(address.parse().unwrap()), "{address}");
-        }
-    }
+    fn detects_cover_format_from_signature_and_rejects_everything_else() {
+        let png = [
+            0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+        ];
+        let (picture, _) = front_cover(png.to_vec()).expect("PNG 签名应被接受");
+        assert_eq!(picture.mime_type(), Some(&MimeType::Png));
+        assert_eq!(picture.pic_type(), PictureType::CoverFront);
 
-    #[tokio::test]
-    async fn rejects_private_literal_cover_urls_before_requesting_them() {
-        for value in [
-            "http://127.0.0.1/cover.jpg",
-            "http://169.254.169.254/latest/meta-data",
-            "http://[::1]/cover.jpg",
-        ] {
-            assert!(matches!(
-                validate_public_url(&Url::parse(value).unwrap(), Duration::from_secs(1)).await,
-                Err(TagError::InvalidCoverUrl)
-            ));
-        }
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46];
+        let (picture, _) = front_cover(jpeg.to_vec()).expect("JPEG 签名应被接受");
+        assert_eq!(picture.mime_type(), Some(&MimeType::Jpeg));
+
+        // 只接受 FLAC 常用的 PNG/JPEG；GIF 之类的格式即便能被识别也要拒绝。
+        let gif = [b'G', b'I', b'F', b'8', b'9', b'a', 0x01, 0x02];
+        assert!(matches!(
+            front_cover(gif.to_vec()),
+            Err(TagError::UnsupportedCoverFormat)
+        ));
+
+        // 不足 8 字节时无法判定签名
+        assert!(front_cover(vec![0xFF, 0xD8, 0xFF]).is_err());
     }
 }

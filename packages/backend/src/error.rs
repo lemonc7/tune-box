@@ -1,6 +1,6 @@
 use reqwest::StatusCode;
 
-use crate::db::Status;
+use crate::{db::Status, net::NetError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum DatabaseError {
@@ -34,6 +34,10 @@ pub enum DownloadError {
     Io(#[from] std::io::Error),
     #[error("资源链接无效")]
     InvalidUrl,
+    #[error("资源链接指向非公网地址")]
+    UnsafeUrl,
+    #[error("解析资源域名失败: {0}")]
+    ResolveHost(#[source] std::io::Error),
     #[error("文件名无效")]
     InvalidFileName,
     #[error("目标文件已存在")]
@@ -50,6 +54,16 @@ pub enum DownloadError {
     SizeMismatch { expected: u64, actual: u64 },
     #[error("http状态错误: {0}")]
     Http(StatusCode),
+}
+
+// 试听和下载共用同一套地址校验，两者都只需要知道请求被拒即可。
+impl From<NetError> for DownloadError {
+    fn from(error: NetError) -> Self {
+        match error {
+            NetError::NotPublicAddress => DownloadError::UnsafeUrl,
+            NetError::Resolve(error) => DownloadError::ResolveHost(error),
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

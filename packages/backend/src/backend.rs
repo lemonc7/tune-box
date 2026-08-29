@@ -9,6 +9,7 @@ use crate::{
     error::BackendError,
     events::DownloadEvents,
     manager::{Manager, ManagerHandle},
+    net::public_redirect_policy,
     provider::{Provider, kuwo::KuwoProvider, netease::NeteaseProvider},
     service::Service,
     tag::embed::Embedder,
@@ -30,9 +31,12 @@ impl Backend {
             .build()?;
 
         // 音频下载不设置总超时，避免大文件在正常下载期间被取消。
+        // 下载和试听的目标地址都由 provider 接口返回，重定向必须逐跳校验，
+        // 否则请求前的地址校验会被一次 302 绕过。
         let download_client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(Duration::from_secs(config.server.download_read_timeout))
+            .redirect(public_redirect_policy())
             .build()?;
 
         let kuwo = KuwoProvider::new(

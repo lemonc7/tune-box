@@ -13,7 +13,8 @@ fn non_blank(value: &str, _context: &()) -> garde::Result {
 pub struct SearchRequest {
     #[garde(custom(non_blank))]
     pub provider: String,
-    #[garde(custom(non_blank))]
+    // 关键词会拼进上游搜索地址，限制长度避免构造出超长请求。
+    #[garde(custom(non_blank), length(max = 128))]
     #[serde(rename = "q")]
     pub query: String,
     #[garde(range(min = 1))]
@@ -26,7 +27,8 @@ pub struct SearchRequest {
 pub struct PreviewRequest {
     #[garde(custom(non_blank))]
     pub provider: String,
-    #[garde(custom(non_blank))]
+    // track_id 会拼进上游解析地址，限制长度避免构造出超长请求。
+    #[garde(custom(non_blank), length(max = 64))]
     pub track_id: String,
 }
 
@@ -34,9 +36,11 @@ pub struct PreviewRequest {
 pub struct CreateDownloadRequest {
     #[garde(custom(non_blank))]
     pub provider: String,
-    #[garde(custom(non_blank))]
+    // track_id 会拼进上游解析地址，限制长度避免构造出超长请求。
+    #[garde(custom(non_blank), length(max = 64))]
     pub track_id: String,
-    #[garde(custom(non_blank))]
+    // 歌名会进入文件路径，sanitize 时会截断；这里限制长度只是避免数据库里存下超长元数据。
+    #[garde(custom(non_blank), length(max = 256))]
     pub name: String,
     #[garde(inner(custom(non_blank)))]
     #[serde(default)]

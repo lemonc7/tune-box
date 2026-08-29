@@ -1,6 +1,6 @@
 /target
-dist/
+/.workbuddy
+/.vscode
 .env
 tune.db
-.vscode/
 config.toml

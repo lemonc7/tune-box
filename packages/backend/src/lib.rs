@@ -6,6 +6,7 @@ pub mod error;
 pub mod events;
 pub mod manager;
 pub mod mcp;
+pub mod net;
 pub mod provider;
 pub mod service;
 pub mod tag;

@@ -3,6 +3,7 @@ use reqwest::{StatusCode, header};
 use std::{
     io::{ErrorKind, SeekFrom},
     path::{Path, PathBuf},
+    time::Duration,
 };
 use tokio::{
     fs,
@@ -10,7 +11,10 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::{error::DownloadError, provider::ResolvedResource};
+use crate::{error::DownloadError, net::validate_public_url, provider::ResolvedResource};
+
+// 校验下载目标时允许花在 DNS 上的最长时间。
+const RESOLVE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Downloader {
     client: reqwest::Client,
@@ -89,6 +93,9 @@ impl Downloader {
         if !matches!(url.scheme(), "http" | "https") {
             return Err(DownloadError::InvalidUrl);
         }
+        // 资源链接来自 provider 接口，可能指向内网；请求前必须确认目标是公网地址。
+        // 重定向由客户端的 redirect policy 逐跳校验。
+        validate_public_url(&url, RESOLVE_TIMEOUT).await?;
 
         let file_name = build_ready_file_name(options.task_id, "flac")?;
         fs::create_dir_all(&self.dir).await?;

@@ -30,6 +30,13 @@ FROM gcr.io/distroless/cc-debian13:latest AS runtime
 
 WORKDIR /app
 ENV RUST_LOG=info,dioxus_server=warn,hyper_util=warn
+# 下载和打标签是突发式的大块分配。glibc 默认会动态抬高 mmap 阈值（最高 32MB），
+# 超过之后这些内存 free 只回到堆的空闲链表、不还给内核，容器里看到的 RSS 就只升不降。
+#   MALLOC_ARENA_MAX=2           减少 per-thread arena 各自囤积的内存
+#   MALLOC_TRIM_THRESHOLD_=128K  显式设置会同时关闭阈值的动态调整，
+#                                让堆顶空闲内存能被回收，大块分配继续走 mmap
+ENV MALLOC_ARENA_MAX=2
+ENV MALLOC_TRIM_THRESHOLD_=131072
 
 COPY --from=builder --chown=1000:1000 /app/packages/app/dist/ /app/
 
