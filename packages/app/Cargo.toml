@@ -19,9 +19,6 @@ subtle = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
 tower-http = { workspace = true, optional = true }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-tikv-jemallocator = { workspace = true, optional = true }
-
 [features]
 default = []
 web = ["dioxus/web", "dep:gloo-timers"]
@@ -35,5 +32,4 @@ server = [
   "dep:tracing-subscriber",
   "dep:tower",
   "dep:tower-http",
-  "dep:tikv-jemallocator",
 ]

@@ -30,9 +30,6 @@ FROM gcr.io/distroless/cc-debian13:latest AS runtime
 
 WORKDIR /app
 ENV RUST_LOG=info,dioxus_server=warn,hyper_util=warn
-# tikv-jemallocator 使用带前缀的运行时配置名。页大小由系统自动检测；THP 保持
-# default，遵循宿主机的 transparent_hugepage 策略（通常为 madvise）。
-ENV _RJEM_MALLOC_CONF=background_thread:true,max_background_threads:1,dirty_decay_ms:10000,muzzy_decay_ms:0
 
 COPY --from=builder --chown=1000:1000 /app/packages/app/dist/ /app/
 

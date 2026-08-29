@@ -14,12 +14,6 @@ use crate::{
 };
 use dioxus::prelude::*;
 
-// 服务端的下载和标签任务具有突发式、多线程分配特征。Linux 部署使用 jemalloc，
-// 由后台线程按 decay 配置回收空闲页；WebAssembly 构建仍使用平台默认分配器。
-#[cfg(all(feature = "server", target_os = "linux"))]
-#[global_allocator]
-static GLOBAL_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
 static CSS: Asset = asset!("/assets/tailwind.css");
 static FAVICON: Asset = asset!("/assets/favicon.ico");
 

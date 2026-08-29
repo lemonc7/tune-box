@@ -4,7 +4,7 @@ members = ["packages/app", "packages/backend", "packages/contracts"]
 
 
 [workspace.package]
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 
 [workspace.dependencies]
@@ -77,4 +77,3 @@ rmcp = { version = "3", features = [
 ] }
 moka = { version = "0.12", features = ["future"] }
 gloo-timers = { version = "0.3", features = ["futures"] }
-tikv-jemallocator = { version = "0.7", features = ["background_threads"] }
