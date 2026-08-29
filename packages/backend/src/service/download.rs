@@ -1,7 +1,11 @@
 use std::time::Duration;
 
 use ::time::{Duration as TimeDuration, OffsetDateTime};
-use contracts::{download::DownloadPage, music::Metadata, request::CreateDownloadRequest};
+use contracts::{
+    download::{DownloadCategory, DownloadPage},
+    music::Metadata,
+    request::CreateDownloadRequest,
+};
 use garde::Validate;
 use tokio::{sync::watch, time};
 use tokio_util::sync::CancellationToken;
@@ -62,23 +66,26 @@ impl Service {
         let limit = limit.clamp(1, 100);
         let fetch_limit = limit + 1;
         let cursor = before_id.unwrap_or(i64::MAX);
-        let mut rows = self.repository.list_downloads(cursor, fetch_limit).await?;
+        let rows = self.repository.list_downloads(cursor, fetch_limit).await?;
+        let attention_count = self.repository.count_attention_downloads().await?;
+        Ok(build_download_page(rows, limit, attention_count))
+    }
 
-        let has_more = rows.len() > limit as usize;
-        if has_more {
-            rows.truncate(limit as usize);
-        }
-
-        let next_before_id = if has_more {
-            rows.last().map(|row| row.id)
-        } else {
-            None
-        };
-
-        Ok(DownloadPage {
-            downloads: rows.into_iter().map(Into::into).collect(),
-            next_before_id,
-        })
+    pub async fn list_downloads_by_category(
+        &self,
+        category: DownloadCategory,
+        before_id: Option<i64>,
+        limit: i64,
+    ) -> Result<DownloadPage, ServiceError> {
+        let limit = limit.clamp(1, 100);
+        let fetch_limit = limit + 1;
+        let cursor = before_id.unwrap_or(i64::MAX);
+        let rows = self
+            .repository
+            .list_downloads_by_category(category, cursor, fetch_limit)
+            .await?;
+        let attention_count = self.repository.count_attention_downloads().await?;
+        Ok(build_download_page(rows, limit, attention_count))
     }
 
     pub async fn cleanup_download_files(&self, id: i64) -> Result<(), ServiceError> {
@@ -350,6 +357,23 @@ impl Service {
             "标签任务等待重试"
         );
         Ok(())
+    }
+}
+
+fn build_download_page(mut rows: Vec<Download>, limit: i64, attention_count: i64) -> DownloadPage {
+    let has_more = rows.len() > limit as usize;
+    if has_more {
+        rows.truncate(limit as usize);
+    }
+
+    DownloadPage {
+        next_before_id: if has_more {
+            rows.last().map(|download| download.id)
+        } else {
+            None
+        },
+        attention_count,
+        downloads: rows.into_iter().map(Into::into).collect(),
     }
 }
 

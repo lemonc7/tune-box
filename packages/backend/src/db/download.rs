@@ -1,4 +1,4 @@
-use contracts::music::Metadata;
+use contracts::{download::DownloadCategory, music::Metadata};
 use sqlx::types::Json;
 
 use crate::db::{Download, Repository, Status};
@@ -46,7 +46,18 @@ impl Repository {
             )
             VALUES (?, ?, ?)
             ON CONFLICT(provider, track_id)
-            DO NOTHING
+            DO UPDATE SET
+                metadata = excluded.metadata,
+                status = 'pending',
+                downloaded_bytes = 0,
+                total_bytes = NULL,
+                retry_count = 0,
+                next_retry_at = NULL,
+                path = NULL,
+                error_message = NULL,
+                finished_at = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE downloads.status = 'cancelled'
             RETURNING id
             "#,
             provider,
@@ -90,6 +101,79 @@ impl Repository {
             limit,
         )
         .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn list_downloads_by_category(
+        &self,
+        category: DownloadCategory,
+        before_id: i64,
+        limit: i64,
+    ) -> Result<Vec<Download>, sqlx::Error> {
+        let category = match category {
+            DownloadCategory::Active => 0_i64,
+            DownloadCategory::Attention => 1,
+            DownloadCategory::History => 2,
+        };
+
+        sqlx::query_as!(
+            Download,
+            r#"
+            SELECT
+                id,
+                provider,
+                track_id,
+                metadata AS "metadata!: Json<Metadata>",
+                status AS "status!: Status",
+                downloaded_bytes,
+                total_bytes,
+                version,
+                retry_count,
+                path,
+                error_message
+            FROM downloads
+            WHERE
+                CASE status
+                    WHEN 'pending' THEN 0
+                    WHEN 'resolving' THEN 0
+                    WHEN 'downloading' THEN 0
+                    WHEN 'downloaded' THEN 0
+                    WHEN 'tagging' THEN 0
+                    WHEN 'failed' THEN 1
+                    WHEN 'paused' THEN 1
+                    ELSE 2
+                END = ?
+              AND id < ?
+            ORDER BY id DESC
+            LIMIT ?
+            "#,
+            category,
+            before_id,
+            limit,
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn count_attention_downloads(&self) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar!(
+            r#"
+            SELECT COUNT(*) AS "count!: i64"
+            FROM downloads
+            WHERE
+                CASE status
+                    WHEN 'pending' THEN 0
+                    WHEN 'resolving' THEN 0
+                    WHEN 'downloading' THEN 0
+                    WHEN 'downloaded' THEN 0
+                    WHEN 'tagging' THEN 0
+                    WHEN 'failed' THEN 1
+                    WHEN 'paused' THEN 1
+                    ELSE 2
+                END = 1
+            "#,
+        )
+        .fetch_one(&self.pool)
         .await
     }
 

@@ -109,8 +109,8 @@ impl MusicMcp {
                 .wake()
                 .await
                 .map_err(|error| error.to_string())?;
-            tracing::info!(task_id = id, "MCP 已创建下载任务");
-            Ok(format!("已创建下载任务 {id}"))
+            tracing::info!(task_id = id, "MCP 已将下载任务加入队列");
+            Ok(format!("下载任务 {id} 已加入队列"))
         } else {
             Ok("下载任务已存在".to_owned())
         }
@@ -165,6 +165,7 @@ impl MusicMcp {
         serde_json::to_string(&serde_json::json!({
             "downloads": downloads,
             "next_before_id": page.next_before_id,
+            "attention_count": page.attention_count,
         }))
         .map_err(|error| error.to_string())
     }

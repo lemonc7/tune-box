@@ -16,6 +16,14 @@ pub enum Status {
     Cancelled,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadCategory {
+    Active,
+    Attention,
+    History,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Download {
     pub id: i64,
@@ -32,6 +40,7 @@ pub struct Download {
 pub struct DownloadPage {
     pub downloads: Vec<Download>,
     pub next_before_id: Option<i64>,
+    pub attention_count: i64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

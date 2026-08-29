@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO downloads (\n                provider,\n                track_id,\n                metadata\n            )\n            VALUES (?, ?, ?)\n            ON CONFLICT(provider, track_id)\n            DO UPDATE SET\n                metadata = excluded.metadata,\n                status = 'pending',\n                downloaded_bytes = 0,\n                total_bytes = NULL,\n                retry_count = 0,\n                next_retry_at = NULL,\n                path = NULL,\n                error_message = NULL,\n                finished_at = NULL,\n                updated_at = CURRENT_TIMESTAMP\n            WHERE downloads.status = 'cancelled'\n            RETURNING id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "downloads",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e785ae8ea290f88a430e1a550c9b5a23c061d7d62bfffacad8d02f6d852587bd"
+}

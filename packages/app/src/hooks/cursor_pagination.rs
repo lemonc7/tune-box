@@ -148,19 +148,6 @@ impl<T: 'static> CursorPagination<T> {
         state.error = Some(message);
     }
 
-    pub fn replace_where(&mut self, mut predicate: impl FnMut(&T) -> bool, item: T) -> bool {
-        let mut state = self.state.write();
-        let Some(existing) = state
-            .extra_items
-            .iter_mut()
-            .find(|existing| predicate(existing))
-        else {
-            return false;
-        };
-        *existing = item;
-        true
-    }
-
     pub fn remove_where(&mut self, mut predicate: impl FnMut(&T) -> bool) -> bool {
         let mut state = self.state.write();
         let original_len = state.extra_items.len();

@@ -227,6 +227,175 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn readding_a_cancelled_download_updates_metadata_and_requeues_it() {
+        let repository = Repository::new(connect_memory().await.unwrap());
+        let id = repository
+            .add_download("provider", "track", &metadata())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(repository.cancel_download(id).await.unwrap());
+
+        let mut replacement = metadata();
+        replacement.name = "updated song".to_owned();
+        replacement.album = "updated album".to_owned();
+
+        let requeued_id = repository
+            .add_download("provider", "track", &replacement)
+            .await
+            .unwrap();
+        assert_eq!(requeued_id, Some(id));
+
+        let download = repository.get_download(id).await.unwrap().unwrap();
+        assert!(matches!(download.status, Status::Pending));
+        assert_eq!(download.metadata.0, replacement);
+        assert_eq!(download.downloaded_bytes, 0);
+        assert_eq!(download.total_bytes, None);
+        assert_eq!(download.retry_count, 0);
+        assert_eq!(download.path, None);
+        assert_eq!(download.error_message, None);
+    }
+
+    #[tokio::test]
+    async fn duplicate_non_cancelled_download_keeps_its_original_metadata() {
+        let repository = Repository::new(connect_memory().await.unwrap());
+        let original = metadata();
+        let id = repository
+            .add_download("provider", "track", &original)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let mut replacement = metadata();
+        replacement.name = "replacement".to_owned();
+        assert_eq!(
+            repository
+                .add_download("provider", "track", &replacement)
+                .await
+                .unwrap(),
+            None
+        );
+
+        let download = repository.get_download(id).await.unwrap().unwrap();
+        assert_eq!(download.metadata.0, original);
+    }
+
+    #[tokio::test]
+    async fn download_categories_only_return_matching_tasks() {
+        use contracts::download::DownloadCategory;
+
+        let repository = Repository::new(connect_memory().await.unwrap());
+
+        let failed_id = repository
+            .add_download("provider", "failed", &metadata())
+            .await
+            .unwrap()
+            .unwrap();
+        let failed = repository.claim_next(&[]).await.unwrap().unwrap();
+        assert_eq!(failed.id, failed_id);
+        assert!(
+            repository
+                .mark_failed(failed.id, failed.version, "failed")
+                .await
+                .unwrap()
+        );
+
+        let paused_id = repository
+            .add_download("provider", "paused", &metadata())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(repository.pause_download(paused_id).await.unwrap());
+
+        let pending_id = repository
+            .add_download("provider", "pending", &metadata())
+            .await
+            .unwrap()
+            .unwrap();
+        let cancelled_id = repository
+            .add_download("provider", "cancelled", &metadata())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(repository.cancel_download(cancelled_id).await.unwrap());
+
+        let active = repository
+            .list_downloads_by_category(DownloadCategory::Active, i64::MAX, 20)
+            .await
+            .unwrap();
+        assert_eq!(
+            active
+                .iter()
+                .map(|download| download.id)
+                .collect::<Vec<_>>(),
+            vec![pending_id]
+        );
+
+        let attention = repository
+            .list_downloads_by_category(DownloadCategory::Attention, i64::MAX, 20)
+            .await
+            .unwrap();
+        assert_eq!(
+            attention
+                .iter()
+                .map(|download| download.id)
+                .collect::<Vec<_>>(),
+            vec![paused_id, failed_id]
+        );
+        assert_eq!(repository.count_attention_downloads().await.unwrap(), 2);
+
+        let history = repository
+            .list_downloads_by_category(DownloadCategory::History, i64::MAX, 20)
+            .await
+            .unwrap();
+        assert_eq!(
+            history
+                .iter()
+                .map(|download| download.id)
+                .collect::<Vec<_>>(),
+            vec![cancelled_id]
+        );
+    }
+
+    #[tokio::test]
+    async fn category_pagination_uses_its_expression_index() {
+        let pool = connect_memory().await.unwrap();
+        let plan = sqlx::query_as::<_, (i64, i64, i64, String)>(
+            r#"
+            EXPLAIN QUERY PLAN
+            SELECT id
+            FROM downloads
+            WHERE
+                CASE status
+                    WHEN 'pending' THEN 0
+                    WHEN 'resolving' THEN 0
+                    WHEN 'downloading' THEN 0
+                    WHEN 'downloaded' THEN 0
+                    WHEN 'tagging' THEN 0
+                    WHEN 'failed' THEN 1
+                    WHEN 'paused' THEN 1
+                    ELSE 2
+                END = ?
+              AND id < ?
+            ORDER BY id DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(1_i64)
+        .bind(i64::MAX)
+        .bind(20_i64)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        assert!(
+            plan.iter()
+                .any(|(_, _, _, detail)| detail.contains("idx_downloads_category_id")),
+            "unexpected query plan: {plan:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn downloaded_and_retried_files_are_claimed_for_tagging() {
         let repository = Repository::new(connect_memory().await.unwrap());
         repository

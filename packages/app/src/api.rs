@@ -1,7 +1,7 @@
 #[cfg(feature = "server")]
 use crate::error::ServerError;
 use contracts::{
-    download::{Download, DownloadAction, DownloadEvent, DownloadPage},
+    download::{Download, DownloadAction, DownloadCategory, DownloadEvent, DownloadPage},
     library::LibrarySnapshot,
     music::MusicResult,
     request::{CreateDownloadRequest, SearchRequest},
@@ -39,7 +39,7 @@ pub async fn create_download(request: CreateDownloadRequest) -> ServerFnResult<S
 
     if let Some(id) = created {
         state.manager.wake().await.map_err(ServerError::into)?;
-        dioxus::logger::tracing::info!(task_id = id, "下载任务已创建");
+        dioxus::logger::tracing::info!(task_id = id, "下载任务已加入队列");
         Ok("已加入下载队列".to_owned())
     } else {
         Ok("下载任务已存在".to_owned())
@@ -47,10 +47,14 @@ pub async fn create_download(request: CreateDownloadRequest) -> ServerFnResult<S
 }
 
 #[server(state: Extension<crate::server::AppState>)]
-pub async fn list_downloads(before_id: Option<i64>, limit: i64) -> ServerFnResult<DownloadPage> {
+pub async fn list_downloads(
+    category: DownloadCategory,
+    before_id: Option<i64>,
+    limit: i64,
+) -> ServerFnResult<DownloadPage> {
     state
         .service
-        .list_downloads(before_id, limit)
+        .list_downloads_by_category(category, before_id, limit)
         .await
         .map_err(ServerError::into)
 }

@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use contracts::download::{Download, DownloadPage};
+use contracts::download::{Download, DownloadCategory, DownloadPage};
 use dioxus::prelude::*;
 use dioxus_icons::lucide::{LoaderCircle, RefreshCw};
 
@@ -11,9 +9,16 @@ use crate::{
     view,
 };
 
+const DOWNLOAD_TABS: [(DownloadCategory, &str); 3] = [
+    (DownloadCategory::Active, "进行中"),
+    (DownloadCategory::Attention, "待处理"),
+    (DownloadCategory::History, "历史记录"),
+];
+
 #[component]
 pub fn DownloadsPage() -> Element {
-    let initial_resource = use_server_future(move || api::list_downloads(None, PAGE_SIZE))?;
+    let initial_resource =
+        use_server_future(move || api::list_downloads(DownloadCategory::Active, None, PAGE_SIZE))?;
     let initial_page = match initial_resource() {
         Some(Ok(page)) => page,
         Some(Err(error)) => {
@@ -34,24 +39,20 @@ pub fn DownloadsPage() -> Element {
     };
 
     // 当前第一页，刷新时直接替换
-    let page = use_signal(move || initial_page);
+    let mut page = use_signal(move || initial_page);
+    let mut category = use_signal(|| DownloadCategory::Active);
     // 加载更多获得的额外数据
-    let pagination = use_cursor_pagination::<Download>();
+    let mut pagination = use_cursor_pagination::<Download>();
     // 后台刷新状态
     let mut refreshing = use_signal(|| false);
     let mut refresh_error = use_signal(|| None::<String>);
     // 防止旧刷新请求覆盖新请求
     let mut refresh_generation = use_signal(|| 0_u64);
-    // 单任务更新版本，防止同一个任务的旧请求覆盖新状态
-    let mut item_generations = use_signal(HashMap::<i64, u64>::new);
-    // 刷新开始后如果收到单任务变化，则放弃可能已经过期的整页结果
-    let mut item_change_epoch = use_signal(|| 0_u64);
-    let refresh = Callback::new(move |_: ()| {
+    let reload = Callback::new(move |requested_category: DownloadCategory| {
         let request_generation = refresh_generation.with_mut(|generation| {
             *generation = generation.wrapping_add(1);
             *generation
         });
-        let request_item_epoch = item_change_epoch();
         refreshing.set(true);
         refresh_error.set(None);
 
@@ -60,19 +61,13 @@ pub fn DownloadsPage() -> Element {
         let mut pagination = pagination;
         let mut refreshing = refreshing;
         let mut refresh_error = refresh_error;
-        let item_change_epoch = item_change_epoch;
+        let category = category;
 
         spawn(async move {
-            let result = api::list_downloads(None, PAGE_SIZE).await;
+            let result = api::list_downloads(requested_category, None, PAGE_SIZE).await;
 
-            // 只允许最后一次刷新修改状态
-            if generation() != request_generation {
-                return;
-            }
-
-            // 刷新期间有任务发生变化时，单任务查询的结果更新，整页快照不再覆盖它。
-            if item_change_epoch() != request_item_epoch {
-                refreshing.set(false);
+            // 只允许当前分类的最后一次刷新修改状态
+            if generation() != request_generation || category() != requested_category {
                 return;
             }
 
@@ -87,52 +82,26 @@ pub fn DownloadsPage() -> Element {
             refreshing.set(false);
         });
     });
+    let refresh = Callback::new(move |_: ()| reload.call(category()));
+    let select_category = Callback::new(move |next_category: DownloadCategory| {
+        if category() == next_category {
+            return;
+        }
 
-    let sync_download = Callback::new(move |id: i64| {
-        let request_generation = item_generations.with_mut(|generations| {
-            let generation = generations.entry(id).or_default();
-            *generation = generation.wrapping_add(1);
-            *generation
+        category.set(next_category);
+        pagination.reset();
+        let attention_count = page.read().attention_count;
+        page.set(DownloadPage {
+            downloads: Vec::new(),
+            next_before_id: None,
+            attention_count,
         });
-        let request_refresh_generation = refresh_generation();
-        item_change_epoch.with_mut(|epoch| *epoch = epoch.wrapping_add(1));
-
-        let generations = item_generations;
-        let refresh_generation = refresh_generation;
-        let mut page = page;
-        let mut pagination = pagination;
-        let mut refresh_error = refresh_error;
-
-        spawn(async move {
-            debounce_item_sync().await;
-            let is_current_item = generations
-                .read()
-                .get(&id)
-                .is_some_and(|generation| *generation == request_generation);
-            if !is_current_item || refresh_generation() != request_refresh_generation {
-                return;
-            }
-
-            let result = api::get_download(id).await;
-            let is_current_item = generations
-                .read()
-                .get(&id)
-                .is_some_and(|generation| *generation == request_generation);
-            if !is_current_item || refresh_generation() != request_refresh_generation {
-                return;
-            }
-
-            match result {
-                Ok(download) => {
-                    apply_download_update(&mut page.write(), &mut pagination, id, download);
-                    refresh_error.set(None);
-                }
-                Err(error) => refresh_error.set(Some(view::server_error_message(error))),
-            }
-        });
+        reload.call(next_category);
     });
 
-    // progress事件直接更新内存进度，changed事件只同步对应任务；重连才刷新第一页。
+    let sync_download = Callback::new(move |_: i64| refresh.call(()));
+
+    // progress 事件直接更新内存；低频的 changed 事件刷新当前分类，跨分类状态自然保持一致。
     let download_events = use_download_events(refresh, sync_download);
     let sync_if_disconnected = Callback::new(move |id| {
         // 正常连接时服务端必定发送Changed；断线时由操作完成回调兜底同步。
@@ -141,6 +110,8 @@ pub fn DownloadsPage() -> Element {
         }
     });
     let current_page = page.read();
+    let current_category = category();
+    let attention_count = current_page.attention_count;
     let initial_cursor = current_page.next_before_id;
     let extra_downloads = pagination.items();
     let downloads_empty = current_page.downloads.is_empty() && extra_downloads.is_empty();
@@ -187,6 +158,35 @@ pub fn DownloadsPage() -> Element {
             }
           }
 
+          nav {
+            class: "mt-5 inline-flex w-fit rounded-lg bg-muted p-1",
+            role: "tablist",
+            aria_label: "下载任务分类",
+            for (tab_category, label) in DOWNLOAD_TABS {
+              button {
+                class: "inline-flex h-8 items-center gap-2 rounded-md px-3",
+                class: "text-sm font-medium transition-colors",
+                class: if current_category == tab_category {
+                    "bg-background text-foreground shadow-sm"
+                } else {
+                    "text-muted-foreground hover:text-foreground"
+                },
+                r#type: "button",
+                role: "tab",
+                aria_selected: current_category == tab_category,
+                onclick: move |_| select_category.call(tab_category),
+                "{label}"
+                if tab_category == DownloadCategory::Attention && attention_count > 0 {
+                  span {
+                    class: "inline-flex h-5 min-w-5 items-center justify-center rounded-full",
+                    class: "bg-destructive px-1.5 text-[11px] font-semibold leading-none text-white",
+                    "{attention_badge(attention_count)}"
+                  }
+                }
+              }
+            }
+          }
+
           // SSE断开不是页面级错误，显示非阻塞状态即可
           if let Some(message) = download_events.error() {
             p {
@@ -210,9 +210,13 @@ pub fn DownloadsPage() -> Element {
           }
 
           if downloads_empty {
-            Empty {
-              title: "暂无下载任务",
-              description: "从搜索页面添加歌曲后，任务会显示在这里。",
+            if refreshing() {
+              Loading { message: "正在加载下载任务..." }
+            } else {
+              Empty {
+                title: empty_title(current_category),
+                description: empty_description(current_category),
+              }
             }
           } else {
             // 只有任务列表滚动
@@ -234,7 +238,9 @@ pub fn DownloadsPage() -> Element {
                   ErrorCard {
                     title: "加载更多失败",
                     description: message,
-                    retry: move |_| load_more(pagination, initial_cursor),
+                    retry: move |_| {
+                        load_more(current_category, pagination, initial_cursor)
+                    },
                   }
                 }
               } else if has_more {
@@ -242,7 +248,7 @@ pub fn DownloadsPage() -> Element {
                   class: "flex min-h-20 items-center justify-center py-4",
                   onvisible: move |event| {
                       if event.data().is_intersecting().unwrap_or(false) {
-                          load_more(pagination, initial_cursor);
+                          load_more(current_category, pagination, initial_cursor);
                       }
                   },
                   if pagination.loading() {
@@ -270,49 +276,18 @@ pub fn DownloadsPage() -> Element {
     }
 }
 
-async fn debounce_item_sync() {
-    #[cfg(feature = "web")]
-    gloo_timers::future::TimeoutFuture::new(75).await;
-}
-
-fn apply_download_update(
-    page: &mut DownloadPage,
-    pagination: &mut CursorPagination<Download>,
-    id: i64,
-    download: Option<Download>,
-) {
-    let Some(download) = download else {
-        page.downloads.retain(|item| item.id != id);
-        pagination.remove_where(|item| item.id == id);
-        return;
-    };
-
-    if let Some(existing) = page.downloads.iter_mut().find(|item| item.id == id) {
-        *existing = download;
-        return;
-    }
-    if pagination.replace_where(|item| item.id == id, download.clone()) {
-        return;
-    }
-
-    // 自增ID大于当前首项表示这是新任务。未加载的旧任务状态变化无需插入当前列表。
-    if page
-        .downloads
-        .first()
-        .is_none_or(|first| download.id > first.id)
-    {
-        page.downloads.insert(0, download);
-    }
-}
-
 /// 请求下一页。`CursorPagination` 负责阻止重复请求，并忽略刷新前发出的旧请求。
-fn load_more(mut pagination: CursorPagination<Download>, initial_cursor: Option<i64>) {
+fn load_more(
+    category: DownloadCategory,
+    mut pagination: CursorPagination<Download>,
+    initial_cursor: Option<i64>,
+) {
     let Some(request) = pagination.try_start_loading(initial_cursor) else {
         return;
     };
 
     spawn(async move {
-        match api::list_downloads(Some(request.cursor()), PAGE_SIZE).await {
+        match api::list_downloads(category, Some(request.cursor()), PAGE_SIZE).await {
             Ok(next_page) => {
                 pagination.append(request, next_page.downloads, next_page.next_before_id);
             }
@@ -321,4 +296,28 @@ fn load_more(mut pagination: CursorPagination<Download>, initial_cursor: Option<
             }
         }
     });
+}
+
+fn empty_title(category: DownloadCategory) -> &'static str {
+    match category {
+        DownloadCategory::Active => "暂无进行中的任务",
+        DownloadCategory::Attention => "暂无待处理任务",
+        DownloadCategory::History => "暂无历史记录",
+    }
+}
+
+fn empty_description(category: DownloadCategory) -> &'static str {
+    match category {
+        DownloadCategory::Active => "从搜索页面添加歌曲后，任务会显示在这里。",
+        DownloadCategory::Attention => "失败或暂停的任务会显示在这里。",
+        DownloadCategory::History => "已完成或已取消的任务会显示在这里。",
+    }
+}
+
+fn attention_badge(count: i64) -> String {
+    if count > 99 {
+        "99+".to_owned()
+    } else {
+        count.to_string()
+    }
 }

@@ -4510,7 +4510,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tune-box"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "dioxus",
  "dioxus-icons",
@@ -4530,7 +4530,7 @@ dependencies = [
 
 [[package]]
 name = "tune-box-backend"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -4554,7 +4554,7 @@ dependencies = [
 
 [[package]]
 name = "tune-box-contracts"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "garde",
  "serde",

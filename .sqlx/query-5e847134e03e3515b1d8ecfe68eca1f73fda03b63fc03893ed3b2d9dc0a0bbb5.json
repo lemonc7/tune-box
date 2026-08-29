@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT COUNT(*) AS \"count!: i64\"\n            FROM downloads\n            WHERE\n                CASE status\n                    WHEN 'pending' THEN 0\n                    WHEN 'resolving' THEN 0\n                    WHEN 'downloading' THEN 0\n                    WHEN 'downloaded' THEN 0\n                    WHEN 'tagging' THEN 0\n                    WHEN 'failed' THEN 1\n                    WHEN 'paused' THEN 1\n                    ELSE 2\n                END = 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5e847134e03e3515b1d8ecfe68eca1f73fda03b63fc03893ed3b2d9dc0a0bbb5"
+}
