@@ -22,7 +22,7 @@ RUN curl -L --proto '=https' --tlsv1.2 -sSf \
 ENV SQLX_OFFLINE=true
 
 COPY . .
-RUN dx bundle --package lensy --release \
+RUN dx bundle --package tune-box --release \
     @client --platform web \
     @server --platform server --target x86_64-unknown-linux-musl
 
