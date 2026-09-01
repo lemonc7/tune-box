@@ -1,9 +1,4 @@
-use std::{
-    fs::File,
-    io::BufReader,
-    path::Path,
-    time::Duration,
-};
+use std::{fs::File, io::BufReader, path::Path, time::Duration};
 
 use contracts::music::Metadata;
 use futures_util::StreamExt;

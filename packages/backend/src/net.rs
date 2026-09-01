@@ -55,10 +55,7 @@ pub(crate) async fn validate_public_url(url: &Url, timeout: Duration) -> Result<
             let addresses = tokio::time::timeout(timeout, tokio::net::lookup_host((host, port)))
                 .await
                 .map_err(|_| {
-                    NetError::Resolve(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        "解析目标域名超时",
-                    ))
+                    NetError::Resolve(io::Error::new(io::ErrorKind::TimedOut, "解析目标域名超时"))
                 })?
                 .map_err(NetError::Resolve)?
                 .collect::<Vec<SocketAddr>>();
