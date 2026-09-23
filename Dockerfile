@@ -33,7 +33,9 @@ WORKDIR /app
 
 ENV RUST_LOG=info,dioxus_server=warn,hyper_util=warn
 
-RUN addgroup -g 1000 tune-box \
+# ChronoLocal 需要 IANA 时区数据才能根据运行时 TZ（如 Asia/Shanghai）格式化日志。
+RUN apk add --no-cache tzdata \
+    && addgroup -g 1000 tune-box \
     && adduser -D -H -u 1000 -G tune-box tune-box
 
 COPY --from=builder --chown=tune-box:tune-box /app/packages/app/dist/ /app/
