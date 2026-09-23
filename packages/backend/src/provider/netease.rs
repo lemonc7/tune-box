@@ -172,7 +172,7 @@ impl NeteaseProvider {
         quality_id: &str,
     ) -> Result<Option<String>, ProviderError> {
         let response: DirectResolveResponse = if quality_id == PREVIEW_QUALITY_ID {
-            self.get_api("song/url", &[("id", track_id), ("br", "128000")])
+            self.get_api("song/url", &[("id", track_id), ("br", "320000")])
                 .await?
         } else {
             self.get_api("song/url/v1", &[("id", track_id), ("level", "lossless")])
@@ -507,7 +507,7 @@ fn build_extended_resolve_url(base: &Url, track_id: &str, quality_id: &str) -> U
         if quality_id == DOWNLOAD_QUALITY_ID {
             "999"
         } else {
-            "128"
+            "320"
         },
     );
     url.set_query(Some(&serializer.finish()));

@@ -20,13 +20,30 @@ pub async fn list_providers() -> ServerFnResult<Vec<String>> {
     Ok(state.service.providers())
 }
 
-#[server(state: Extension<crate::server::AppState>)]
-pub async fn search_music(request: SearchRequest) -> ServerFnResult<MusicResult> {
+#[get(
+    "/api/search?provider&q&page&limit",
+    state: Extension<crate::server::AppState>
+)]
+async fn search_music_api(
+    provider: String,
+    q: String,
+    page: i64,
+    limit: i64,
+) -> ServerFnResult<MusicResult> {
     state
         .service
-        .search(request)
+        .search(SearchRequest {
+            provider,
+            query: q,
+            page,
+            limit,
+        })
         .await
         .map_err(ServerError::into)
+}
+
+pub async fn search_music(request: SearchRequest) -> ServerFnResult<MusicResult> {
+    search_music_api(request.provider, request.query, request.page, request.limit).await
 }
 
 #[server(state: Extension<crate::server::AppState>)]

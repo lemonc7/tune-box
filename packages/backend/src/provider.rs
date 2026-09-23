@@ -14,7 +14,7 @@ const USER_AGENT: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36";
 const MAX_PROVIDER_JSON_BYTES: usize = 4 * 1024 * 1024;
 pub const DOWNLOAD_QUALITY_ID: &str = "2000kflac";
-pub const PREVIEW_QUALITY_ID: &str = "128kmp3";
+pub const PREVIEW_QUALITY_ID: &str = "320kmp3";
 
 pub struct ResolvedResource {
     pub provider: &'static str,

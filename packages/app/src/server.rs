@@ -8,12 +8,12 @@ use backend::{
     mcp::MusicMcp,
     service::Service,
 };
-use contracts::request::{PreviewRequest, SearchRequest};
+use contracts::request::PreviewRequest;
 use dioxus::{
     CapturedError,
     logger::tracing,
     server::axum::{
-        self, Extension, Json,
+        self, Extension,
         body::Body,
         extract::{Query, State},
         http::{HeaderMap, Request, StatusCode, header},
@@ -159,7 +159,6 @@ async fn serve(
         .layer(CatchPanicLayer::new());
 
     let router = dioxus::server::router(App)
-        .route("/api/v1/music/search", get(search_music_api))
         .route("/api/preview", get(stream_preview))
         .nest_service("/mcp", authenticated_mcp)
         // Dioxus Router已注册Server Function，SSR fallback和静态资源。
@@ -288,19 +287,6 @@ fn server_address(configured_port: u32) -> dioxus::Result<SocketAddr> {
 
     let port = u16::try_from(configured_port)?;
     Ok(SocketAddr::from(([0, 0, 0, 0], port)))
-}
-
-async fn search_music_api(
-    Extension(state): Extension<AppState>,
-    Query(request): Query<SearchRequest>,
-) -> Response {
-    match state.service.search(request).await {
-        Ok(result) => Json(result).into_response(),
-        Err(error) => {
-            tracing::warn!(%error, "音乐搜索请求失败");
-            (StatusCode::BAD_REQUEST, "音乐搜索失败").into_response()
-        }
-    }
 }
 
 async fn stream_preview(
